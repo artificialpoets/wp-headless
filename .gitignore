@@ -25,8 +25,10 @@ themes/*/.vite/
 *.swp
 .DS_Store
 
-# Local dev artifacts — ignore the running WP installs, keep the scaffold
-dev/three-sites/.runtime/
+# Local dev artifacts — entire dev/ folder is the contributor's playground
+# (Docker-composed WP installs for live testing). Never committed; was
+# scrubbed from history with git filter-repo on 2026-05-18.
+dev/
 *.local
 .env
 .env.*
