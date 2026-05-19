@@ -1,0 +1,50 @@
+.wrap {
+  max-width: var(--width-content);
+  margin: 0 auto;
+  padding: var(--space-20) var(--gutter);
+  text-align: center;
+  border-block-start: 4px solid var(--color-contrast);
+}
+
+.code {
+  font-family: var(--font-heading);
+  font-size: clamp(5rem, 15vw, 9rem);
+  font-weight: 800;
+  line-height: 1;
+  margin: 0 0 var(--space-4);
+  color: var(--color-accent-1);
+  letter-spacing: -0.04em;
+}
+
+.title {
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  margin: 0 0 var(--space-5);
+  letter-spacing: -0.01em;
+}
+
+.description {
+  font-size: var(--text-base);
+  color: var(--color-accent-4);
+  margin: 0 0 var(--space-10);
+  line-height: var(--leading-snug);
+}
+
+.home {
+  display: inline-block;
+  padding: var(--space-3) var(--space-8);
+  background: var(--color-contrast);
+  color: var(--color-base);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: background var(--transition), color var(--transition);
+}
+
+.home:hover {
+  background: var(--color-accent-1);
+  color: var(--color-contrast);
+}

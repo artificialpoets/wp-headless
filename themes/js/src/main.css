@@ -1,0 +1,339 @@
+/*
+ * Design tokens — mirrors Twenty Twenty-Five's theme.json palette + spacing scale.
+ * Override any custom property here to retheme the whole starter.
+ */
+:root {
+  /* Color palette (T25 names) */
+  --color-base:       #ffffff;
+  --color-contrast:   #111111;
+  --color-accent-1:   #ffee58; /* yellow — hover/highlight */
+  --color-accent-2:   #f6cff4;
+  --color-accent-3:   #503aa8;
+  --color-accent-4:   #686868; /* secondary/muted text */
+  --color-accent-5:   #fbfaf3; /* warm off-white — hero, alt sections */
+  --color-border:     #e8e8e0;
+
+  /* Typography */
+  --font-body:    system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-heading: ui-serif, Georgia, 'Times New Roman', serif;
+  --font-mono:    ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+
+  --text-xs:   0.8125rem;
+  --text-sm:   0.875rem;
+  --text-base: 1.0625rem;   /* 17px — editorial reading size */
+  --text-lg:   1.25rem;
+  --text-xl:   1.5625rem;
+  --text-2xl:  2rem;
+  --text-3xl:  clamp(1.875rem, 4vw, 2.75rem);
+  --text-4xl:  clamp(2.5rem,   6vw, 4rem);
+
+  --leading-body:   1.75;
+  --leading-tight:  1.15;
+  --leading-snug:   1.35;
+
+  /* Spacing (mirrors T25 spacingSizes) */
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: clamp(1.5rem, 3vw,  2.5rem);
+  --space-12: clamp(2rem,   5vw,  3.5rem);
+  --space-16: clamp(3rem,   7vw,  5rem);
+  --space-20: clamp(4rem,   10vw, 7rem);
+
+  /* Layout */
+  --width-content: 52rem;
+  --width-wide:    80rem;
+  --gutter:        1.5rem;
+
+  /* Misc */
+  --transition: 160ms ease;
+}
+
+/* ──────────────────────────────────────
+   Reset
+   ────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+  color: var(--color-contrast);
+  background-color: var(--color-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ──────────────────────────────────────
+   Typography defaults
+   ────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  text-wrap: pretty;
+}
+
+p, li, blockquote, figcaption {
+  text-wrap: pretty;
+}
+
+a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+img, video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* ──────────────────────────────────────
+   Focus — accessible, on-brand
+   ────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-contrast);
+  outline-offset: 3px;
+}
+
+/* ──────────────────────────────────────
+   Accessibility utilities
+   ────────────────────────────────────── */
+
+/* Visually hidden but readable by screen readers + focusable in tab order. */
+.sr-only,
+.screen-reader-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip-link — hidden until focused (keyboard or screen reader). */
+.wph-skip-link {
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0;
+  z-index: 1000;
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-contrast);
+  color: var(--color-base);
+  text-decoration: none;
+  font-weight: 600;
+  border-radius: 0 0 4px 0;
+  transform: translateY(-100%);
+  transition: transform 120ms ease;
+}
+.wph-skip-link:focus,
+.wph-skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 2px solid var(--color-accent-1);
+  outline-offset: 0;
+}
+
+/* Respect users who prefer reduced motion — disable smooth transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ──────────────────────────────────────
+   Gutenberg block fallback styles
+   Loaded in addition to the WP core block stylesheet so blocks render
+   sensibly even when /wp-includes/css/dist/block-library/style.min.css
+   is missing (e.g. in dev or behind a CDN that hasn't been warmed).
+   ────────────────────────────────────── */
+
+.wp-block-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin-block: var(--space-6);
+}
+.wp-block-column {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .wp-block-columns { flex-direction: column; }
+}
+
+.wp-block-quote {
+  border-inline-start: 3px solid var(--color-contrast);
+  padding: var(--space-2) var(--space-5);
+  margin-block: var(--space-6);
+  font-style: italic;
+}
+.wp-block-quote cite {
+  display: block;
+  margin-block-start: var(--space-3);
+  font-style: normal;
+  font-size: var(--text-sm);
+  color: var(--color-accent-4);
+}
+
+.wp-block-pullquote {
+  text-align: center;
+  font-size: var(--text-xl);
+  border-block: 2px solid var(--color-contrast);
+  padding: var(--space-6) 0;
+  margin-block: var(--space-8);
+}
+
+.wp-block-code,
+.wp-block-preformatted {
+  background: var(--color-accent-5);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-x: auto;
+  line-height: 1.6;
+  margin-block: var(--space-5);
+}
+
+.wp-block-separator {
+  border: none;
+  border-block-start: 1px solid var(--color-border);
+  margin-block: var(--space-8);
+}
+.wp-block-separator.has-alpha-channel-opacity {
+  opacity: 0.6;
+}
+
+.wp-block-list,
+.wp-block-list ul,
+.wp-block-list ol {
+  padding-inline-start: 1.5em;
+}
+.wp-block-list li {
+  margin-block-end: var(--space-2);
+}
+
+.wp-block-image {
+  margin-block: var(--space-6);
+}
+.wp-block-image img {
+  border-radius: 4px;
+}
+.wp-block-image figcaption {
+  font-size: var(--text-sm);
+  color: var(--color-accent-4);
+  text-align: center;
+  margin-block-start: var(--space-2);
+}
+
+.wp-block-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block: var(--space-5);
+}
+.wp-block-button__link {
+  display: inline-block;
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-contrast);
+  color: var(--color-base);
+  text-decoration: none;
+  border-radius: 4px;
+  font-weight: 600;
+  transition: background var(--transition);
+}
+.wp-block-button__link:hover {
+  background: var(--color-accent-3);
+}
+
+.wp-block-table {
+  margin-block: var(--space-6);
+  width: 100%;
+  border-collapse: collapse;
+}
+.wp-block-table th,
+.wp-block-table td {
+  border: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+}
+
+.wp-block-embed {
+  margin-block: var(--space-6);
+}
+.wp-block-embed__wrapper {
+  position: relative;
+  padding-block-end: 56.25%;
+  overflow: hidden;
+}
+.wp-block-embed__wrapper iframe,
+.wp-block-embed__wrapper video,
+.wp-block-embed__wrapper object {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.wp-block-group {
+  margin-block: var(--space-5);
+}
+
+.wp-block-spacer {
+  display: block;
+  height: 40px;
+}
+
+.wp-block-cover {
+  position: relative;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+  margin-block: var(--space-6);
+}
+.wp-block-cover__inner-container {
+  position: relative;
+  padding: var(--space-6);
+}
+
+/* Alignment classes used by core blocks */
+.aligncenter, .has-text-align-center { text-align: center; }
+.alignright,  .has-text-align-right  { text-align: end;  }
+.alignleft,   .has-text-align-left   { text-align: start;   }
+.alignwide  { max-width: var(--width-wide); margin-inline: auto; }
+.alignfull  { width: 100%; }
+
+/* Reading-time-friendly defaults for content rendered from post.content.rendered */
+.wp-block-heading {
+  margin-block-start: var(--space-8);
+  margin-block-end: var(--space-3);
+}

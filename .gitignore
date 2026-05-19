@@ -1,48 +1,44 @@
-# Wordpress - ignore core, configuration, examples, uploads and logs.
-# https://github.com/github/gitignore/blob/main/WordPress.gitignore
-
-# Core
+# =====================================================================
+# wp-headless .gitignore
 #
-# Note: if you want to stage/commit WP core files
-# you can delete this whole section/until Configuration.
-/wp-admin/
-/wp-content/index.php
-/wp-content/languages
-/wp-content/plugins/index.php
-/wp-content/themes/index.php
-/wp-includes/
-/index.php
-/license.txt
-/readme.html
-/wp-*.php
-/xmlrpc.php
+# Pre-wp.org strategy: we self-host updates via GitHub Releases, so the
+# committed repo IS the distribution artifact. That means we COMMIT:
+#   - vendor/   → runtime PHP deps (plugin-update-checker etc.)
+#   - themes/*/dist/  → prebuilt React frontend (so sites work out of the box)
+# Once on wp.org we can revisit and rely on the build pipeline instead.
+# =====================================================================
 
-# Configuration
-wp-config.php
+# PHP — dev artifacts only. vendor/ IS committed.
+.phpunit.cache/
+composer.phar
 
-# Example themes
-/wp-content/themes/twenty*/
+# Node / Vite — committed: themes/*/dist (built). Ignored: source build state.
+node_modules/
+themes/js/node_modules/
+themes/ts/node_modules/
+themes/*/.vite/
 
-# Example plugin
-/wp-content/plugins/hello.php
-
-# Uploads
-/wp-content/uploads/
-
-# Log files
+# Build / IDE
 *.log
+.idea/
+.vscode/
+*.swp
+.DS_Store
 
-# htaccess
-/.htaccess
+# Local dev artifacts — ignore the running WP installs, keep the scaffold
+dev/three-sites/.runtime/
+*.local
+.env
+.env.*
+!.env.example
 
-# All plugins
-#
-# Note: If you wish to whitelist plugins,
-# uncomment the next line
-#/wp-content/plugins
+# Translations build artifacts
+languages/*.mo
+languages/*.po~
 
-# All themes
-#
-# Note: If you wish to whitelist themes,
-# uncomment the next line
-#/wp-content/themes
+# Release zip (built by CI, never commit by hand)
+/build/
+/wp-headless.zip
+
+# OS
+Thumbs.db

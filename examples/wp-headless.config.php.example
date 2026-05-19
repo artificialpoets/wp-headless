@@ -1,0 +1,31 @@
+<?php
+/**
+ * Example external WP Headless config.
+ *
+ * Place this file outside the plugin, for example:
+ * wp-content/headless/wp-headless.config.php
+ */
+
+return array(
+	'enabled'   => true,
+	'namespace' => 'wp-headless/v1',
+	'frontend'  => array(
+		'index_file'       => 'dist/index.html',
+		'asset_mount'      => '_wp-headless',
+		'asset_base_url'   => '',
+		'inject_wp_head'   => true,
+		'inject_wp_footer' => true,
+	),
+	'cors'      => array(
+		'allowed_origins' => array(
+			home_url(),
+			'https://app.example.com',
+		),
+	),
+	'rest'      => array(
+		'post_types' => array(
+			'post',
+			'page',
+		),
+	),
+);

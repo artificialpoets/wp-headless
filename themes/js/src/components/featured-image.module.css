@@ -1,0 +1,18 @@
+.figure {
+  margin: 0 0 var(--space-10);
+  overflow: hidden;
+}
+
+.image {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.caption {
+  margin-block-start: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-accent-4);
+  text-align: center;
+}
