@@ -1,0 +1,122 @@
+.wrap {
+  max-width: var(--width-content);
+  margin: 0 auto;
+  padding: var(--space-12) var(--gutter) var(--space-20);
+}
+
+.title {
+  font-family: var(--font-heading);
+  font-size: var(--text-3xl);
+  font-weight: 800;
+  line-height: var(--leading-tight);
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--space-10);
+  padding-block-end: var(--space-6);
+  border-block-end: 1px solid var(--color-border);
+}
+
+/* WP-generated page content — same reading styles as single */
+.content {
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+}
+
+.content h2 {
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  margin: var(--space-10) 0 var(--space-4);
+  letter-spacing: -0.01em;
+}
+
+.content h3 {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin: var(--space-8) 0 var(--space-3);
+}
+
+.content p       { margin: 0 0 var(--space-6); }
+.content a       { color: var(--color-contrast); }
+.content a:hover { color: var(--color-accent-3); }
+
+.content img {
+  max-width: 100%;
+  height: auto;
+  margin: var(--space-8) 0;
+}
+
+.content blockquote {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-style: italic;
+  border-inline-start: 3px solid var(--color-contrast);
+  margin: var(--space-8) 0;
+  padding: var(--space-2) var(--space-6);
+  color: var(--color-accent-4);
+}
+
+.content ul,
+.content ol     { padding-inline-start: var(--space-6); margin: 0 0 var(--space-6); }
+.content li     { margin-block-end: var(--space-2); }
+
+.content pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  background: var(--color-accent-5);
+  border: 1px solid var(--color-border);
+  padding: var(--space-6);
+  overflow-x: auto;
+}
+
+.content code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-accent-5);
+  border: 1px solid var(--color-border);
+  padding: 0.1em 0.4em;
+}
+
+.content pre code { background: none; border: none; padding: 0; }
+
+.loading,
+.error {
+  color: var(--color-accent-4);
+  padding: var(--space-10) 0;
+  font-size: var(--text-sm);
+}
+
+/* Password-protected page */
+.passwordForm {
+  background: var(--color-accent-5);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: var(--space-8);
+  margin: var(--space-8) 0;
+  text-align: center;
+}
+
+.passwordIntro {
+  margin: 0 0 var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--color-accent-4);
+}
+
+.passwordInput {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: var(--text-base);
+  margin-inline-end: var(--space-3);
+  min-width: 220px;
+}
+
+.passwordButton {
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-contrast);
+  color: var(--color-base);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}

@@ -1,0 +1,11 @@
+CREATE USER IF NOT EXISTS 'wordpress'@'%' IDENTIFIED BY 'wordpress';
+
+CREATE DATABASE IF NOT EXISTS wp_site1 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS wp_site2 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS wp_site3 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+GRANT ALL PRIVILEGES ON wp_site1.* TO 'wordpress'@'%';
+GRANT ALL PRIVILEGES ON wp_site2.* TO 'wordpress'@'%';
+GRANT ALL PRIVILEGES ON wp_site3.* TO 'wordpress'@'%';
+
+FLUSH PRIVILEGES;

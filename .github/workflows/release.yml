@@ -1,0 +1,162 @@
+# =====================================================================
+# Release pipeline — runs ONLY on pushes to main.
+#
+# What it does on every main push:
+#   1. Reads current version from wp-headless.php
+#   2. Bumps it (patch by default, override with [bump:minor] or [bump:major]
+#      in the commit subject; skip a release entirely with [skip release])
+#   3. Rewrites the version in wp-headless.php, composer.json, readme.txt
+#   4. Rebuilds both starter themes (themes/js + themes/ts) and commits the
+#      fresh dist alongside the version bump
+#   5. Tags vX.Y.Z, pushes, packs a clean release zip
+#   6. Publishes a GitHub Release with that zip as an asset
+#
+# Site installs (running plugin-update-checker) discover the release on
+# their next twice-daily update cron and auto-install if
+# auto_update_plugin is true for wp-headless (filter ships in main file).
+#
+# Other branches (dev, feature/*, etc.) are intentionally NOT released —
+# do dev work there freely, merge to main when you want to ship.
+# =====================================================================
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Skip when the CI-bot's own version-bump commit comes back through.
+    # Skip when the human author tagged the commit with [skip release].
+    if: >-
+      !contains(github.event.head_commit.message, '[skip release]')
+      && github.event.head_commit.author.email != '41898282+github-actions[bot]@users.noreply.github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history so we can tag)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Persist GITHUB_TOKEN so subsequent `git push` works.
+          persist-credentials: true
+
+      - name: Decide bump level
+        id: bump
+        run: |
+          MSG="${{ github.event.head_commit.message }}"
+          if   [[ "$MSG" == *"[bump:major]"* ]]; then LEVEL=major
+          elif [[ "$MSG" == *"[bump:minor]"* ]]; then LEVEL=minor
+          else LEVEL=patch
+          fi
+          echo "level=$LEVEL" >> "$GITHUB_OUTPUT"
+          echo "Bump level: $LEVEL"
+
+      - name: Read + bump version
+        id: version
+        run: |
+          set -euo pipefail
+          CURRENT=$(grep -oE "Version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+" wp-headless.php | head -1 | awk '{print $2}')
+          if [[ -z "$CURRENT" ]]; then
+            echo "::error::Could not parse current version from wp-headless.php"; exit 1
+          fi
+          IFS='.' read -r MA MI PA <<< "$CURRENT"
+          case "${{ steps.bump.outputs.level }}" in
+            major) MA=$((MA+1)); MI=0; PA=0 ;;
+            minor) MI=$((MI+1)); PA=0 ;;
+            patch) PA=$((PA+1)) ;;
+          esac
+          NEW="$MA.$MI.$PA"
+          echo "Bumping $CURRENT → $NEW"
+          # 1) Plugin header
+          sed -i "s/^ \* Version:.*/ \* Version: $NEW/" wp-headless.php
+          # 2) WP_HEADLESS_VERSION constant
+          sed -i "s/define( 'WP_HEADLESS_VERSION', '$CURRENT' );/define( 'WP_HEADLESS_VERSION', '$NEW' );/" wp-headless.php
+          # 3) composer.json — only the top-level "version" key
+          sed -i "s/\"version\": \"$CURRENT\"/\"version\": \"$NEW\"/" composer.json
+          # 4) readme.txt — Stable tag line (wp.org convention)
+          if [[ -f readme.txt ]]; then
+            sed -i "s/^Stable tag:.*/Stable tag: $NEW/" readme.txt
+          fi
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW"         >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW"        >> "$GITHUB_OUTPUT"
+
+      - name: Setup PHP 8.1
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install runtime composer deps (no dev)
+        run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build JS starter theme
+        working-directory: themes/js
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build TS starter theme
+        working-directory: themes/ts
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit version bump + fresh dist
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Always include version files; add dist only if something changed.
+          git add wp-headless.php composer.json readme.txt 2>/dev/null || true
+          git add -f themes/js/dist themes/ts/dist vendor || true
+          git commit -m "chore(release): v${{ steps.version.outputs.new }} [skip release]" || echo "Nothing to commit"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin main --follow-tags
+
+      - name: Pack release zip
+        run: |
+          set -euo pipefail
+          rm -rf build
+          mkdir -p build/wp-headless
+          # rsync only the files an end-user site needs at runtime.
+          rsync -a \
+            --exclude='.git*' \
+            --exclude='.github' \
+            --exclude='tests' \
+            --exclude='phpunit.xml.dist' \
+            --exclude='composer.lock' \
+            --exclude='build' \
+            --exclude='node_modules' \
+            --exclude='themes/*/node_modules' \
+            --exclude='themes/*/src' \
+            --exclude='themes/*/.vite' \
+            --exclude='themes/*/package*.json' \
+            --exclude='themes/*/vite.config.*' \
+            --exclude='themes/*/tsconfig.json' \
+            --exclude='themes/*/index.html' \
+            --exclude='*.md.bak' \
+            --exclude='dev' \
+            --exclude='examples' \
+            ./ build/wp-headless/
+          cd build && zip -rq ../wp-headless.zip wp-headless
+          cd .. && ls -lah wp-headless.zip
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: wp-headless.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

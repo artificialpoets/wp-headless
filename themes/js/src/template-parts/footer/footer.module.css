@@ -1,0 +1,138 @@
+.footer {
+  background: var(--color-contrast);
+  color: var(--color-base);
+  margin-block-start: auto;
+}
+
+.inner {
+  max-width: var(--width-wide);
+  margin: 0 auto;
+  padding: var(--space-12) var(--gutter) var(--space-8);
+}
+
+/* ── Top row: brand + nav + meta ── */
+.top {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--space-10);
+  padding-block-end: var(--space-8);
+  border-block-end: 1px solid rgba(255, 255, 255, 0.1);
+  margin-block-end: var(--space-6);
+  align-items: start;
+}
+
+@media (max-width: 600px) {
+  .top { grid-template-columns: 1fr; }
+}
+
+/* ── Footer nav ── */
+.nav { margin: 0; }
+
+.navList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.navLink {
+  font-size: var(--text-sm);
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.navLink:hover {
+  color: var(--color-accent-1);
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.footerLogo {
+  height: 2rem;
+  width: auto;
+  filter: brightness(0) invert(1);
+  opacity: 0.9;
+}
+
+.name {
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: block;
+}
+
+.description {
+  font-size: var(--text-sm);
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+  max-width: 36rem;
+  line-height: var(--leading-snug);
+}
+
+/* ── Site meta key/value list ── */
+.meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-5);
+  font-size: var(--text-xs);
+  align-content: start;
+}
+
+.meta dt {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+}
+
+.meta dd {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* ── Bottom bar ── */
+.bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.credit {
+  font-size: var(--text-sm);
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0;
+  line-height: 1.7;
+}
+
+.credit a {
+  color: var(--color-base);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 1px;
+}
+
+.credit a:hover {
+  color: var(--color-accent-1);
+}
+
+.siteLink {
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.4);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.siteLink:hover {
+  color: var(--color-accent-1);
+}
