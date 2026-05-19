@@ -1,0 +1,36 @@
+.nav {
+  margin-block-end: var(--space-6);
+  font-size: var(--text-sm);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.item {
+  color: var(--color-accent-4);
+}
+
+.item a {
+  color: var(--color-accent-4);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.item a:hover {
+  color: var(--color-contrast);
+}
+
+.item [aria-current="page"] {
+  color: var(--color-contrast);
+}
+
+.sep {
+  margin: 0 var(--space-2);
+  opacity: 0.5;
+}
