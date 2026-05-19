@@ -2,7 +2,7 @@
     "name": "artificialpoets/wp-headless",
     "description": "Turn any properly-built WordPress theme into a React headless frontend.",
     "type": "wordpress-plugin",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "license": "GPL-2.0-or-later",
     "homepage": "https://github.com/artificialpoets/wp-headless",
     "require": {

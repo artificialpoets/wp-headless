@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/artificialpoets/wp-headless
  * Update URI: https://github.com/artificialpoets/wp-headless
  * Description: Turn any properly-built WordPress theme into a React headless frontend. The plugin engages headless mode when the active theme ships dist/index.html, serving the SPA with a full runtime payload, asset proxy, and REST primitives for every URL kind WordPress can route to.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Artificial Poets
@@ -25,7 +25,7 @@ if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
 	return;
 }
 
-define( 'WP_HEADLESS_VERSION', '0.1.0' );
+define( 'WP_HEADLESS_VERSION', '0.1.1' );
 define( 'WP_HEADLESS_FILE', __FILE__ );
 define( 'WP_HEADLESS_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WP_HEADLESS_URL', plugin_dir_url( __FILE__ ) );

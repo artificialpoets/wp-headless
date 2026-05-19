@@ -11,14 +11,14 @@ class ComposerStaticInitb4a813d0c862536771e7013f53975eba
     );
 
     public static $prefixLengthsPsr4 = array (
-        'W' => 
+        'W' =>
         array (
             'WPHeadless\\' => 11,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'WPHeadless\\' => 
+        'WPHeadless\\' =>
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),
