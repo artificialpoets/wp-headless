@@ -2,7 +2,7 @@
 Contributors: artificialpoets
 Tags: headless, react, rest-api, spa, decoupled
 Requires at least: 6.0
-Tested up to: 6.7
+Tested up to: 7.0
 Requires PHP: 7.4
 Stable tag: 0.1.1
 License: GPL-2.0-or-later
