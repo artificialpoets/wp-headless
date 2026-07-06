@@ -84,6 +84,46 @@ class RequestDataBuilder {
 	 * @return array<string, mixed>
 	 */
 	public function for_url( string $url ): array {
+		$response = $this->build_url_response( $url );
+
+		// Populate robots from the resolved shape. base_template() seeds it null
+		// and current_robots() reads the global wp_robots filter, which reflects
+		// the *current* main query — wrong when resolving an arbitrary URL (e.g.
+		// the /resolve endpoint). Deriving it from the resolved flags is correct
+		// for both the served shell and cross-URL resolution.
+		if ( null === ( $response['robots'] ?? null ) ) {
+			$response['robots'] = $this->robots_for_response( $response );
+		}
+
+		return $response;
+	}
+
+	/**
+	 * Compute a robots directive string from a resolved response shape.
+	 *
+	 * Mirrors WordPress core: non-public sites block everything, search results
+	 * and 404s are noindex, and indexable pages carry the default
+	 * max-image-preview directive.
+	 *
+	 * @param array<string, mixed> $response
+	 */
+	protected function robots_for_response( array $response ): ?string {
+		if ( ! (int) get_option( 'blog_public', 1 ) ) {
+			return 'noindex, nofollow';
+		}
+		if ( ! empty( $response['is_search'] ) || ! empty( $response['is_404'] ) ) {
+			return 'noindex, follow';
+		}
+		return 'max-image-preview:large';
+	}
+
+	/**
+	 * Resolve a URL to its request shape (without robots — see for_url()).
+	 *
+	 * @param string $url URL or path.
+	 * @return array<string, mixed>
+	 */
+	protected function build_url_response( string $url ): array {
 		$url        = $this->normalize_url( $url );
 		$path       = (string) wp_parse_url( $url, PHP_URL_PATH );
 		$normalized = $this->normalize_path( $path );
