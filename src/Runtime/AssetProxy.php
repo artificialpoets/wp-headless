@@ -54,10 +54,19 @@ class AssetProxy implements Module {
 		exit;
 	}
 
-	private function resolve_file_path( string $relative_path ): string {
+	protected function resolve_file_path( string $relative_path ): string {
 		$relative_path = rawurldecode( $relative_path );
 		$relative_path = ltrim( strtok( $relative_path, '?' ), '/' );
 		$relative_path = str_replace( "\0", '', $relative_path );
+
+		// Reject path-traversal sequences outright, before any filesystem access.
+		// wp_normalize_path() collapses slashes but does NOT resolve '..', so a
+		// string prefix check alone would let '/dist/../../wp-config.php' escape
+		// the build root. Blocking '..' segments is the primary guard; the
+		// realpath() containment check below is defense-in-depth against symlinks.
+		if ( '' === $relative_path || preg_match( '#(^|/)\.\.(/|$)#', $relative_path ) ) {
+			return '';
+		}
 
 		$build_root = $this->theme_manager->resolve_dist_path() ?? $this->config->build_root();
 		$root       = wp_normalize_path( trailingslashit( $build_root ) );
@@ -68,6 +77,19 @@ class AssetProxy implements Module {
 		}
 
 		if ( ! is_readable( $file ) || ! is_file( $file ) ) {
+			return '';
+		}
+
+		// Canonicalize and confirm the resolved real path is still inside the
+		// build root — this catches any symlink inside dist/ that points outside.
+		$real_root = realpath( untrailingslashit( $root ) );
+		$real_file = realpath( $file );
+
+		if ( false === $real_root || false === $real_file ) {
+			return '';
+		}
+
+		if ( 0 !== strpos( wp_normalize_path( $real_file ), trailingslashit( wp_normalize_path( $real_root ) ) ) ) {
 			return '';
 		}
 
