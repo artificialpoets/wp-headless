@@ -22,6 +22,9 @@ class ExposedRequestDataBuilder extends RequestDataBuilder {
     public function exposeRobotsForResponse( array $response ): ?string {
         return $this->robots_for_response( $response );
     }
+    public function exposeCurrentKind(): string {
+        return $this->current_kind();
+    }
 }
 
 class RequestDataBuilderTest extends TestCase {
@@ -103,5 +106,54 @@ class RequestDataBuilderTest extends TestCase {
             'max-image-preview:large',
             $this->make()->exposeRobotsForResponse( array( 'is_singular' => true ) )
         );
+    }
+
+    // --- current_kind() ---
+
+    /**
+     * Stub every conditional to false, then let the caller flip specific ones.
+     *
+     * @param array<string,bool> $true names of is_* functions that return true
+     */
+    private function stubConditionals( array $true = array() ): void {
+        $conds = array(
+            'is_404', 'is_front_page', 'is_search', 'is_attachment', 'is_singular',
+            'is_post_type_archive', 'is_author', 'is_date', 'is_category', 'is_tag',
+            'is_tax', 'is_home', 'is_archive',
+        );
+        foreach ( $conds as $fn ) {
+            Functions\when( $fn )->justReturn( in_array( $fn, $true, true ) );
+        }
+    }
+
+    public function test_current_kind_404_is_unresolved(): void {
+        $this->stubConditionals( array( 'is_404' ) );
+        $this->assertSame( 'unresolved', $this->make()->exposeCurrentKind() );
+    }
+
+    public function test_current_kind_front_page(): void {
+        $this->stubConditionals( array( 'is_front_page' ) );
+        $this->assertSame( 'front_page', $this->make()->exposeCurrentKind() );
+    }
+
+    public function test_current_kind_singular_uses_post_type(): void {
+        $this->stubConditionals( array( 'is_singular' ) );
+        Functions\when( 'get_post_type' )->justReturn( 'product' );
+        $this->assertSame( 'product', $this->make()->exposeCurrentKind() );
+    }
+
+    public function test_current_kind_term_archive(): void {
+        $this->stubConditionals( array( 'is_archive', 'is_category' ) );
+        $this->assertSame( 'term_archive', $this->make()->exposeCurrentKind() );
+    }
+
+    public function test_current_kind_search(): void {
+        $this->stubConditionals( array( 'is_search' ) );
+        $this->assertSame( 'search', $this->make()->exposeCurrentKind() );
+    }
+
+    public function test_current_kind_defaults_to_home(): void {
+        $this->stubConditionals();
+        $this->assertSame( 'home', $this->make()->exposeCurrentKind() );
     }
 }

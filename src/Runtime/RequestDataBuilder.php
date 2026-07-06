@@ -26,6 +26,7 @@ class RequestDataBuilder {
 		return array(
 			'url'                  => $this->current_url(),
 			'path'                 => $this->current_path(),
+			'kind'                 => $this->current_kind(),
 			'is_front_page'        => is_front_page(),
 			'is_home'              => is_home(),
 			'is_singular'          => is_singular(),
@@ -50,6 +51,49 @@ class RequestDataBuilder {
 			'post'                 => $post ? $this->summarize_post( $post ) : null,
 			'queried_object_id'    => get_queried_object_id(),
 		);
+	}
+
+	/**
+	 * Derive a `kind` string from WordPress's current main-query conditionals,
+	 * mirroring the vocabulary for_url() emits so the two request shapes match.
+	 * Used when falling back to WP's real routing for URLs the URL resolver
+	 * can't classify by hand.
+	 */
+	protected function current_kind(): string {
+		if ( is_404() ) {
+			return 'unresolved';
+		}
+		if ( is_front_page() ) {
+			return 'front_page';
+		}
+		if ( is_search() ) {
+			return 'search';
+		}
+		if ( is_attachment() ) {
+			return 'attachment';
+		}
+		if ( is_singular() ) {
+			return (string) ( get_post_type() ?: 'post' );
+		}
+		if ( is_post_type_archive() ) {
+			return 'post_type_archive';
+		}
+		if ( is_author() ) {
+			return 'author_archive';
+		}
+		if ( is_date() ) {
+			return 'date_archive';
+		}
+		if ( is_category() || is_tag() || is_tax() ) {
+			return 'term_archive';
+		}
+		if ( is_home() ) {
+			return 'home';
+		}
+		if ( is_archive() ) {
+			return 'archive';
+		}
+		return 'home';
 	}
 
 	/**
@@ -95,7 +139,18 @@ class RequestDataBuilder {
 			$response['robots'] = $this->robots_for_response( $response );
 		}
 
-		return $response;
+		/**
+		 * Filter the resolved request shape for a URL.
+		 *
+		 * Lets ecosystem plugins (WooCommerce, multilingual, custom rewrites)
+		 * teach the resolver about routes it doesn't reimplement by hand —
+		 * especially useful for the /resolve endpoint's client-side navigation,
+		 * where there is no WordPress main query to fall back to.
+		 *
+		 * @param array<string,mixed> $response The resolved request shape.
+		 * @param string              $url      The URL being resolved.
+		 */
+		return (array) apply_filters( 'wp_headless_resolve_url', $response, $url );
 	}
 
 	/**

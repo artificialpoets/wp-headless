@@ -47,12 +47,22 @@ class FrontendBridge implements Module {
 		// renders these correctly, so we should respond with the right HTTP status.
 		$current_url = home_url( isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '/' );
 		$resolved    = $this->request_data->for_url( $current_url );
-		$is_404      = ! empty( $resolved['is_404'] );
+		$render_url  = $current_url;
 
-		// Fall back to WP's own is_404() check if the resolver itself didn't reject it.
-		if ( ! $is_404 && is_404() && 'unresolved' === ( $resolved['kind'] ?? '' ) ) {
-			$is_404 = true;
+		// The URL resolver reimplements WordPress routing by hand, so it 404s
+		// any route it doesn't know: plugin rewrites (WooCommerce endpoints,
+		// bbPress), pretty search (/search/term/), custom permastructs. But
+		// WordPress's own main query already ran for this request and IS
+		// authoritative. When the resolver couldn't classify a URL that WP
+		// resolved fine, fall back to WP's real query conditionals for both the
+		// status and the payload — otherwise a valid page 404s. Passing a null
+		// render URL makes HtmlDocument build the payload from for_current_request().
+		if ( 'unresolved' === ( $resolved['kind'] ?? '' ) && ! is_404() ) {
+			$resolved   = $this->request_data->for_current_request();
+			$render_url = null;
 		}
+
+		$is_404 = ! empty( $resolved['is_404'] );
 
 		// Honour WordPress's canonical redirects before serving: ?p=123 →
 		// pretty permalink, missing/extra trailing slash, and renamed slugs
@@ -78,8 +88,9 @@ class FrontendBridge implements Module {
 		// for_url() rather than for_current_request() — that's what makes
 		// `/profile/`, `/books/`, auth routes and the like recognised as
 		// their proper `kind` in `window.WP_HEADLESS.request` from the very
-		// first render.
-		echo $this->document->render( $current_url ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		// first render. When we fell back to WP's real query above, $render_url
+		// is null so the payload is built from for_current_request() to match.
+		echo $this->document->render( $render_url ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		exit;
 	}
 }
