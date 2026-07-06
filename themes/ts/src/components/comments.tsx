@@ -22,6 +22,11 @@ export function Comments({ runtime, postId, commentStatus }: CommentsProps) {
   const { comments, loading, total, totalPages } = useComments(runtime, postId, { page })
   const [replyTo, setReplyTo] = useState<number | null>(null)
   const isOpen = commentStatus === 'open'
+  // Native WP requires login to comment when "Users must be registered and
+  // logged in to comment" is on. The plugin enables anonymous REST comments
+  // otherwise, so a logged-out visitor is only blocked in this one case.
+  const requiresLogin = Boolean(runtime?.discussion?.comment_registration) && !runtime?.user
+  const canComment = isOpen && !requiresLogin
 
   const tree = buildCommentTree(comments)
   const displayCount = total || comments.length
@@ -49,7 +54,7 @@ export function Comments({ runtime, postId, commentStatus }: CommentsProps) {
               key={node.id}
               comment={node}
               runtime={runtime}
-              isOpen={isOpen}
+              isOpen={canComment}
               replyTo={replyTo}
               setReplyTo={setReplyTo}
             />
@@ -73,7 +78,13 @@ export function Comments({ runtime, postId, commentStatus }: CommentsProps) {
         </div>
       )}
 
-      {isOpen && replyTo === null && (
+      {isOpen && requiresLogin && (
+        <p className={styles.status}>
+          You must be <a href={runtime?.urls?.login || '/wp-login.php'}>logged in</a> to post a comment.
+        </p>
+      )}
+
+      {canComment && replyTo === null && (
         <CommentForm runtime={runtime} postId={postId} parent={0} />
       )}
 
@@ -203,9 +214,7 @@ function CommentForm({ runtime, postId, parent = 0, onDone, inline = false }: Co
       if (onDone) setTimeout(onDone, 1500)
     } catch (err) {
       if (err instanceof WPApiError && err.wpCode === 'rest_comment_login_required') {
-        setSubmitError(
-          'This site requires login to comment. In WP Admin → Settings → Discussion, uncheck "Users must be registered and logged in to comment."'
-        )
+        setSubmitError('You must be logged in to post a comment.')
       } else {
         setSubmitError(err instanceof Error ? err.message : String(err))
       }

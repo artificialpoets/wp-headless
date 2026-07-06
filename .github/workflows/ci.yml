@@ -1,0 +1,88 @@
+# =====================================================================
+# Continuous integration — the test gate.
+#
+# Runs on every push and pull request. The release workflow depends on
+# this passing (via the reusable-workflow call in release.yml), so a red
+# suite blocks the tag / zip / publish that auto-updates live sites.
+#
+# Jobs:
+#   php    — PHPUnit unit suite across the supported PHP range
+#   themes — build both starter themes (tsc + vite) so a broken theme
+#            can't ship in a release zip
+# =====================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call: # lets release.yml require this as a gate
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php:
+    name: PHPUnit (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # PHPUnit 10 needs PHP >= 8.1. The plugin itself supports 7.4+; the
+        # 7.4 leg is exercised by the WP integration suite (see roadmap),
+        # which runs PHPUnit 9. Here we cover the modern interpreters.
+        php: ['8.1', '8.2', '8.3', '8.4']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ matrix.php }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-
+
+      - name: Install dependencies (with dev)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Run PHPUnit
+        run: composer test
+
+  themes:
+    name: Build starter themes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        theme: [js, ts]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: themes/${{ matrix.theme }}/package-lock.json
+
+      - name: Install
+        working-directory: themes/${{ matrix.theme }}
+        run: npm ci
+
+      - name: Build (tsc + vite)
+        working-directory: themes/${{ matrix.theme }}
+        run: npm run build

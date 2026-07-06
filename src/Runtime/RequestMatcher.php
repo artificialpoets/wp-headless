@@ -52,6 +52,16 @@ class RequestMatcher {
 			return false;
 		}
 
+		// Core XML sitemaps (WP 5.5+) render on `template_redirect` at the
+		// default priority; FrontendBridge exits earlier and would otherwise
+		// serve the SPA shell — with a 404, since the resolver doesn't recognize
+		// the sitemap URL. There is no `is_sitemap()` conditional in core, so we
+		// detect the request by its query vars and stand down so core (and
+		// SEO-plugin sitemaps routed the same way) can render the XML.
+		if ( '' !== (string) get_query_var( 'sitemap', '' ) || '' !== (string) get_query_var( 'sitemap-stylesheet', '' ) ) {
+			return false;
+		}
+
 		if ( '' !== (string) get_query_var( RewriteRules::ASSET_QUERY_VAR, '' ) ) {
 			return false;
 		}

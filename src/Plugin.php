@@ -8,6 +8,7 @@
 namespace WPHeadless;
 
 use WPHeadless\Admin\SettingsPage;
+use WPHeadless\Api\Comments;
 use WPHeadless\Api\ContentFields;
 use WPHeadless\Api\MenuEndpoint;
 use WPHeadless\Api\ResolveEndpoint;
@@ -43,6 +44,7 @@ class Plugin {
 			new AssetProxy( $this->config, $this->theme_manager ),
 			new FrontendBridge( $this->config, $this->theme_manager ),
 			new ContentFields( $this->config ),
+			new Comments(),
 			new MenuEndpoint( $this->config ),
 			new RuntimeEndpoint( $this->config, $this->theme_manager ),
 			new ResolveEndpoint( $this->config ),

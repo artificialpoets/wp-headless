@@ -34,6 +34,10 @@ class ExposedHtmlDocument extends HtmlDocument {
     public function exposeInjectBeforeClosingTag( string $html, string $tag, string $content ): string {
         return $this->inject_before_closing_tag( $html, $tag, $content );
     }
+
+    public function exposeStripFirstTitle( string $html ): string {
+        return $this->strip_first_title( $html );
+    }
 }
 
 class HtmlDocumentTest extends TestCase {
@@ -253,6 +257,36 @@ class HtmlDocumentTest extends TestCase {
     public function test_empty_content_returns_html_unchanged(): void {
         $html   = '<html><head></head></html>';
         $result = $this->make()->exposeInjectBeforeClosingTag( $html, '</head>', '' );
+        $this->assertSame( $html, $result );
+    }
+
+    // -------------------------------------------------------------------------
+    // strip_first_title()
+    // -------------------------------------------------------------------------
+
+    public function test_strips_the_static_placeholder_title(): void {
+        $html   = '<head><meta charset="utf-8"><title>WP Headless Starter</title></head>';
+        $result = $this->make()->exposeStripFirstTitle( $html );
+        $this->assertStringNotContainsString( '<title>', $result );
+        $this->assertStringContainsString( '<meta charset="utf-8">', $result );
+    }
+
+    public function test_strips_only_the_first_title(): void {
+        $html   = '<title>First</title><body><title>Second</title></body>';
+        $result = $this->make()->exposeStripFirstTitle( $html );
+        $this->assertStringNotContainsString( 'First', $result );
+        $this->assertStringContainsString( '<title>Second</title>', $result );
+    }
+
+    public function test_strips_title_with_attributes(): void {
+        $html   = '<title data-managed="1">Placeholder</title>';
+        $result = $this->make()->exposeStripFirstTitle( $html );
+        $this->assertSame( '', $result );
+    }
+
+    public function test_no_title_leaves_html_unchanged(): void {
+        $html   = '<head><meta charset="utf-8"></head>';
+        $result = $this->make()->exposeStripFirstTitle( $html );
         $this->assertSame( $html, $result );
     }
 }
