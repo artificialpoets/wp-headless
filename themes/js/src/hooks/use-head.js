@@ -47,7 +47,27 @@ export function useHead({
 
     const created = []
 
+    // Adopt-or-replace: remove any existing tag with the same identity before
+    // adding ours. The server shell already emits core's rel_canonical (and, if
+    // an SEO plugin is active, its description/og/twitter/canonical). Appending
+    // blindly would leave two canonicals and two descriptions on the initial
+    // crawler load — which makes Google ignore both. Removing the existing
+    // match first guarantees exactly one authoritative tag per identity, and
+    // keeps it fresh across client-side navigation.
+    const claim = (selector) => {
+      if (!selector) return
+      document.head.querySelectorAll(selector).forEach((el) => {
+        if (!created.includes(el)) el.remove()
+      })
+    }
+
     const setMeta = (attrs) => {
+      const selector = attrs.name
+        ? `meta[name="${attrs.name}"]`
+        : attrs.property
+          ? `meta[property="${attrs.property}"]`
+          : null
+      claim(selector)
       const link = document.createElement('meta')
       for (const [k, v] of Object.entries(attrs)) link.setAttribute(k, v)
       link.setAttribute('data-managed', 'wp-headless')
@@ -56,6 +76,12 @@ export function useHead({
     }
 
     const setLink = (attrs) => {
+      const selector = attrs.rel === 'canonical'
+        ? 'link[rel="canonical"]'
+        : attrs.rel === 'alternate' && attrs.type
+          ? `link[rel="alternate"][type="${attrs.type}"]`
+          : null
+      claim(selector)
       const link = document.createElement('link')
       for (const [k, v] of Object.entries(attrs)) link.setAttribute(k, v)
       link.setAttribute('data-managed', 'wp-headless')

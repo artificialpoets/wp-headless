@@ -12,6 +12,9 @@ use WPHeadless\Contracts\Module;
 use WPHeadless\Theme\ThemeManager;
 
 class FrontendBridge implements Module {
+	/** @var Config */
+	private Config $config;
+
 	/** @var RequestMatcher */
 	private RequestMatcher $matcher;
 
@@ -22,6 +25,7 @@ class FrontendBridge implements Module {
 	private RequestDataBuilder $request_data;
 
 	public function __construct( Config $config, ThemeManager $theme_manager ) {
+		$this->config       = $config;
 		$this->request_data = new RequestDataBuilder();
 		$runtime_data       = new RuntimeDataBuilder( $config, $theme_manager, $this->request_data );
 
@@ -48,6 +52,22 @@ class FrontendBridge implements Module {
 		// Fall back to WP's own is_404() check if the resolver itself didn't reject it.
 		if ( ! $is_404 && is_404() && 'unresolved' === ( $resolved['kind'] ?? '' ) ) {
 			$is_404 = true;
+		}
+
+		// Honour WordPress's canonical redirects before serving: ?p=123 →
+		// pretty permalink, missing/extra trailing slash, and renamed slugs
+		// (wp_old_slug_redirect) should 301 rather than serve a 200 duplicate.
+		// These normally hook template_redirect at priority 10, but we run at
+		// priority 0 and exit — so invoke them here. Only for URLs WordPress
+		// itself recognises: synthetic routes (auth pages, resolver-only kinds)
+		// have no real queried object to canonicalise, and is_404() is true for
+		// them, so redirect_canonical() would no-op or misfire. redirect_canonical()
+		// performs the redirect and exits when it decides to; otherwise it returns.
+		if ( ! $is_404 && ! is_404() && $this->config->get( 'frontend.canonical_redirects', true ) ) {
+			if ( function_exists( 'wp_old_slug_redirect' ) ) {
+				wp_old_slug_redirect();
+			}
+			redirect_canonical();
 		}
 
 		status_header( $is_404 ? 404 : 200 );
