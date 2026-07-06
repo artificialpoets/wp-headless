@@ -184,7 +184,9 @@ class Config {
 				'max_age'           => 86400,
 			),
 			'rest'         => array(
-				'post_types' => array( 'post', 'page' ),
+				// Empty = auto-discover every public, REST-enabled post type
+				// (see ContentFields). Set an explicit list to restrict enrichment.
+				'post_types' => array(),
 			),
 		);
 	}
@@ -285,7 +287,7 @@ class Config {
 			$config['rest'] = array();
 		}
 
-		$config['rest']['post_types'] = $this->normalize_string_list( $config['rest']['post_types'] ?? array( 'post', 'page' ) );
+		$config['rest']['post_types'] = $this->normalize_string_list( $config['rest']['post_types'] ?? array() );
 
 		return $config;
 	}
