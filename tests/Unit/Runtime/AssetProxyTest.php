@@ -99,6 +99,51 @@ class AssetProxyTest extends TestCase {
         );
     }
 
+    // --- Base64url (Rollup 4 / Vite 5+) content hashes ---
+
+    public function test_base64url_hash_is_immutable(): void {
+        $proxy = $this->makeProxy();
+        $this->assertSame(
+            'public, max-age=31536000, immutable',
+            $proxy->exposeCacheControlHeader( 'index.C19sr62o.js' )
+        );
+    }
+
+    public function test_base64url_hash_with_underscore_is_immutable(): void {
+        $proxy = $this->makeProxy();
+        $this->assertSame(
+            'public, max-age=31536000, immutable',
+            $proxy->exposeCacheControlHeader( 'Beams.DF_pqO0p.js' )
+        );
+    }
+
+    public function test_base64url_hash_with_leading_dash_is_immutable(): void {
+        $proxy = $this->makeProxy();
+        $this->assertSame(
+            'public, max-age=31536000, immutable',
+            $proxy->exposeCacheControlHeader( 'react-three-fiber.esm.-vnhfyxM.js' )
+        );
+    }
+
+    public function test_base64url_hash_in_module_chunk_is_immutable(): void {
+        $proxy = $this->makeProxy();
+        $this->assertSame(
+            'public, max-age=31536000, immutable',
+            $proxy->exposeCacheControlHeader( 'three.module.pMXWwIxH.js' )
+        );
+    }
+
+    public function test_8_letter_lowercase_word_is_not_a_hash(): void {
+        // "renderer" is 8 chars of [a-z] — a plain word, not a content hash.
+        $proxy = $this->makeProxy();
+        $this->assertSame( 'public, max-age=3600', $proxy->exposeCacheControlHeader( 'app.renderer.js' ) );
+    }
+
+    public function test_8_letter_lowercase_word_material_is_not_a_hash(): void {
+        $proxy = $this->makeProxy();
+        $this->assertSame( 'public, max-age=3600', $proxy->exposeCacheControlHeader( 'custom.material.css' ) );
+    }
+
     // --- Short-lived (no hash) filenames ---
 
     public function test_index_html_is_short_lived(): void {

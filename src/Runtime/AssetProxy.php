@@ -137,10 +137,38 @@ class AssetProxy implements Module {
 	}
 
 	protected function cache_control_header( string $filename ): string {
-		if ( 1 === preg_match( '/[.-][a-f0-9]{8,}\./i', $filename ) ) {
+		if ( $this->looks_content_hashed( $filename ) ) {
 			return 'public, max-age=31536000, immutable';
 		}
 
 		return 'public, max-age=3600';
+	}
+
+	/**
+	 * Whether a filename carries a content hash and can be cached forever.
+	 *
+	 * Two hash styles are recognized:
+	 * - Hex (webpack contenthash, older Vite): 8+ hex chars after a '.' or '-'
+	 *   separator, e.g. app-a1b2c3d4.js.
+	 * - Base64url (Rollup 4 / Vite 5+ default): exactly 8 chars of
+	 *   [A-Za-z0-9_-] between separators, e.g. index.C19sr62o.js or
+	 *   esm.-vnhfyxM.js. A segment made only of lowercase letters is NOT
+	 *   treated as a hash, so names like app.renderer.js stay short-lived —
+	 *   real base64url hashes virtually always contain a digit, an uppercase
+	 *   letter, or '-'/'_'.
+	 */
+	protected function looks_content_hashed( string $filename ): bool {
+		if ( 1 === preg_match( '/[.-][a-f0-9]{8,}\./i', $filename ) ) {
+			return true;
+		}
+
+		if (
+			1 === preg_match( '/[.-]([A-Za-z0-9_-]{8})\./', $filename, $matches )
+			&& 1 !== preg_match( '/^[a-z]+$/', $matches[1] )
+		) {
+			return true;
+		}
+
+		return false;
 	}
 }
