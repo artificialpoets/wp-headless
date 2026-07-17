@@ -172,6 +172,7 @@ class Plugin {
 
 	public function activate(): void {
 		RewriteRules::register_rules( $this->config );
+		Seo\LlmsTxt::register_rules( $this->config );
 		flush_rewrite_rules();
 		$this->cleanup_legacy_options();
 	}

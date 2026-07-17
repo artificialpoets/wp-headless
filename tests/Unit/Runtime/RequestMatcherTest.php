@@ -14,6 +14,7 @@ use Brain\Monkey\Functions;
 use PHPUnit\Framework\TestCase;
 use WPHeadless\Config\Config;
 use WPHeadless\Runtime\RequestMatcher;
+use WPHeadless\Seo\LlmsTxt;
 use WPHeadless\Theme\ThemeManager;
 
 class RequestMatcherTest extends TestCase {
@@ -31,6 +32,7 @@ class RequestMatcherTest extends TestCase {
 		Functions\when( 'is_trackback' )->justReturn( false );
 		Functions\when( 'is_robots' )->justReturn( false );
 		Functions\when( 'is_customize_preview' )->justReturn( false );
+		Functions\when( 'is_favicon' )->justReturn( false );
 		// apply_filters( $tag, $value, ... ) → $value passthrough.
 		Functions\when( 'apply_filters' )->alias(
 			static fn( $tag, $value = null ) => $value
@@ -85,6 +87,31 @@ class RequestMatcherTest extends TestCase {
 		Functions\when( 'is_feed' )->justReturn( true );
 		$matcher = $this->makeMatcher();
 		$this->assertFalse( $matcher->should_serve_frontend() );
+	}
+
+	public function test_favicon_request_stands_down(): void {
+		Functions\when( 'is_favicon' )->justReturn( true );
+		$matcher = $this->makeMatcher();
+		$this->assertFalse(
+			$matcher->should_serve_frontend(),
+			'/favicon.ico must get core favicon behavior, not the SPA shell.'
+		);
+	}
+
+	public function test_llms_query_var_stands_down(): void {
+		$matcher = $this->makeMatcher( array( LlmsTxt::QUERY_VAR => '1' ) );
+		$this->assertFalse(
+			$matcher->should_serve_frontend(),
+			'/llms.txt streams plain text on parse_request and must never fall through to the shell.'
+		);
+	}
+
+	public function test_llms_full_query_var_stands_down(): void {
+		$matcher = $this->makeMatcher( array( LlmsTxt::FULL_QUERY_VAR => '1' ) );
+		$this->assertFalse(
+			$matcher->should_serve_frontend(),
+			'/llms-full.txt must be left to the LlmsTxt module as well.'
+		);
 	}
 
 	public function test_disabled_config_never_serves(): void {

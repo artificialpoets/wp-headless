@@ -10,6 +10,7 @@ namespace WPHeadless\Runtime;
 use WPHeadless\Config\Config;
 use WPHeadless\Contracts\Module;
 use WPHeadless\Routing\RewriteRules;
+use WPHeadless\Seo\LlmsTxt;
 use WPHeadless\Theme\ThemeManager;
 
 class RequestMatcher {
@@ -48,7 +49,7 @@ class RequestMatcher {
 		// renders its own minimal oEmbed view (templates/embed) — without this
 		// the WP-default embed-template.php would win and the iframe wouldn't
 		// match the rest of the site's design.
-		if ( is_feed() || is_trackback() || is_robots() || is_customize_preview() ) {
+		if ( is_feed() || is_trackback() || is_robots() || is_customize_preview() || is_favicon() ) {
 			return false;
 		}
 
@@ -63,6 +64,18 @@ class RequestMatcher {
 		}
 
 		if ( '' !== (string) get_query_var( RewriteRules::ASSET_QUERY_VAR, '' ) ) {
+			return false;
+		}
+
+		// llms.txt requests are streamed (and exited) on parse_request@0; if
+		// that module is ever disabled while its rewrite rules are still
+		// cached, stand down so WordPress renders natively instead of the
+		// shell 404ing a text endpoint.
+		if ( '' !== (string) get_query_var( LlmsTxt::QUERY_VAR, '' ) ) {
+			return false;
+		}
+
+		if ( '' !== (string) get_query_var( LlmsTxt::FULL_QUERY_VAR, '' ) ) {
 			return false;
 		}
 
