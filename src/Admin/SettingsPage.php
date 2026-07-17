@@ -151,6 +151,66 @@ class SettingsPage implements Module {
 				</tbody>
 			</table>
 
+			<h2><?php esc_html_e( 'Modules', 'wp-headless' ); ?></h2>
+			<p>
+				<?php esc_html_e( 'Each feature boots as a module. Disable any module per site via the config file — modules.{key}.enabled — or register additional modules through the wp_headless_modules filter (see docs/HOOKS.md).', 'wp-headless' ); ?>
+			</p>
+			<table class="widefat striped wph-table">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Module', 'wp-headless' ); ?></th>
+						<th><?php esc_html_e( 'Class', 'wp-headless' ); ?></th>
+						<th><?php esc_html_e( 'Enabled', 'wp-headless' ); ?></th>
+						<th><?php esc_html_e( 'Registered', 'wp-headless' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php foreach ( $this->module_status() as $key => $module ) : ?>
+						<tr>
+							<td><code><?php echo esc_html( $key ); ?></code></td>
+							<td><code><?php echo esc_html( $module['class'] ); ?></code></td>
+							<td><?php echo $module['enabled'] ? '✓' : '<em>' . esc_html__( 'disabled', 'wp-headless' ) . '</em>'; ?></td>
+							<td><?php echo $module['registered'] ? '✓' : '—'; ?></td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+
+			<h2><?php esc_html_e( 'SEO & discovery', 'wp-headless' ); ?></h2>
+			<table class="widefat striped wph-table">
+				<tbody>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Schema graph', 'wp-headless' ); ?></th>
+						<td>
+							<?php if ( \WPHeadless\Runtime\SeoHead::seo_plugin_active() ) : ?>
+								<em><?php esc_html_e( 'Standing down — a dedicated SEO plugin owns the head output.', 'wp-headless' ); ?></em>
+							<?php elseif ( $this->config->get( 'seo.schema.enabled', true ) ) : ?>
+								✓ <?php esc_html_e( 'JSON-LD @graph emitted on served pages.', 'wp-headless' ); ?>
+							<?php else : ?>
+								<em><?php esc_html_e( 'Disabled via config (seo.schema.enabled).', 'wp-headless' ); ?></em>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'llms.txt', 'wp-headless' ); ?></th>
+						<td>
+							<?php if ( $this->config->get( 'seo.llms.enabled', true ) ) : ?>
+								<a href="<?php echo esc_url( home_url( '/llms.txt' ) ); ?>" target="_blank" rel="noopener"><?php echo esc_html( home_url( '/llms.txt' ) ); ?></a>
+								<?php if ( $this->config->get( 'seo.llms.full', false ) ) : ?>
+									&mdash; <a href="<?php echo esc_url( home_url( '/llms-full.txt' ) ); ?>" target="_blank" rel="noopener">llms-full.txt</a>
+								<?php endif; ?>
+							<?php else : ?>
+								<em><?php esc_html_e( 'Disabled via config (seo.llms.enabled).', 'wp-headless' ); ?></em>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'AI crawler policy', 'wp-headless' ); ?></th>
+						<td><code><?php echo esc_html( (string) $this->config->get( 'seo.robots_txt.ai_policy', 'allow' ) ); ?></code></td>
+					</tr>
+				</tbody>
+			</table>
+
 			<h2><?php esc_html_e( 'Endpoints', 'wp-headless' ); ?></h2>
 			<ul class="wph-endpoints">
 				<li>
@@ -165,6 +225,10 @@ class SettingsPage implements Module {
 					<code>GET <?php echo esc_html( rest_url( $this->config->namespace() . '/menus' ) ); ?>?location={slug}</code>
 					&mdash; <?php esc_html_e( 'Fetch a nav menu by location, slug, or id.', 'wp-headless' ); ?>
 				</li>
+				<li>
+					<code>GET <?php echo esc_html( home_url( '/llms.txt' ) ); ?></code>
+					&mdash; <?php esc_html_e( 'Site map for LLM/AI agents (llmstxt.org format).', 'wp-headless' ); ?>
+				</li>
 			</ul>
 
 			<h2><?php esc_html_e( 'Recommended starter themes', 'wp-headless' ); ?></h2>
@@ -177,6 +241,19 @@ class SettingsPage implements Module {
 			</ul>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Module status rows from the shared plugin instance.
+	 *
+	 * @return array<string, array{class: string, enabled: bool, registered: bool}>
+	 */
+	private function module_status(): array {
+		if ( ! function_exists( 'wp_headless_plugin' ) ) {
+			return array();
+		}
+
+		return wp_headless_plugin()->modules();
 	}
 
 	private function page_css(): string {

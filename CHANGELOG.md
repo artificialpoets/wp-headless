@@ -5,6 +5,56 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 0.2.0
+
+SEO/AEO engine + open module system. For a headless site the served body is
+an empty SPA shell, so head meta, JSON-LD, sitemaps, and llms.txt are the
+machine-readable content channels — this release makes them first-class.
+
+### Added
+- **Module registry**: `Plugin` keeps a keyed module map; the new
+  `wp_headless_modules` filter lets add-on plugins register, replace, or
+  remove modules; `Plugin::add_module()` covers late registrants (themes);
+  `modules.{key}.enabled => false` config disables any module per site.
+  New `wp_headless_booted` action (the plugin's first action).
+- **Schema.org graph** (`Seo\SchemaGraph`): the SEO head's JSON-LD is now a
+  connected `@graph` with stable `@id` anchors — Organization (+logo),
+  WebSite (+SearchAction), WebPage/CollectionPage/ProfilePage,
+  BreadcrumbList, ImageObject, Article, Person — covering singulars,
+  archives, authors, and dates. New filters: `wp_headless_schema_pieces`,
+  `wp_headless_schema_piece`, `wp_headless_schema_graph`.
+- **llms.txt** (`Seo\LlmsTxt`): `/llms.txt` (llmstxt.org site map for AI
+  agents) and opt-in `/llms-full.txt` (full text content). Filters:
+  `wp_headless_llms_txt_data`, `wp_headless_llms_txt_output`.
+- **AI-crawler policy** (`Seo\RobotsTxt`): robots.txt decoration —
+  `allow` (default) or `block` stanzas for AI training/discovery bots
+  (`wp_headless_ai_crawlers` filter), plus an llms.txt pointer.
+- **Head cleanup** (`Seo\HeadCleanup`): removes headless-irrelevant head
+  output (RSD/xmlrpc, generator, shortlink, emoji bootstrap, …) when
+  serving; per-tag config + `wp_headless_head_cleanup` filter. RSS feed
+  links, canonical, robots, and REST discovery stay by default.
+- og:image fallback chain: featured image → custom logo → site icon →
+  `seo.default_image` config — social cards are no longer imageless.
+- `docs/HOOKS.md`: complete hook API reference with semver policy.
+- Boot now happens on `plugins_loaded@1` (was include time) so every
+  plugin can hook `wp_headless_modules`/`wp_headless_config` regardless of
+  load order.
+
+### Changed
+- **`jsonld` in `wp_headless_seo_meta` now carries a `@graph` document**
+  (was a single flat node). The array key and filter contract are
+  unchanged; only consumers introspecting the node's internal shape are
+  affected.
+- Front page / posts page is detected before singulars in SEO meta —
+  fixes a static front page emitting its page permalink as canonical and
+  its post title as og:title.
+- `/favicon.ico` is exempted from frontend interception (core favicon
+  behavior instead of an SPA-shell 404).
+
+### Removed
+- `SeoHead::article_jsonld()` (protected) — replaced by `Seo\SchemaGraph`.
+  Subclasses overriding it must migrate to the schema piece filters.
+
 ## [0.1.0] — 2026-05-18
 
 First pre-release. Plugin is feature-complete for native WordPress content and ships with two production-ready starter themes. Versioned `0.x` while battle-testing on real sites; `1.0.0` will be the first wp.org release.
