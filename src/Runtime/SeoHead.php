@@ -9,6 +9,7 @@ namespace WPHeadless\Runtime;
 
 use WPHeadless\Config\Config;
 use WPHeadless\Contracts\Module;
+use WPHeadless\Seo\SchemaGraph;
 use WPHeadless\Theme\ThemeManager;
 
 /**
@@ -29,11 +30,19 @@ use WPHeadless\Theme\ThemeManager;
  */
 class SeoHead implements Module {
 
+	/** @var Config */
+	private Config $config;
+
 	/** @var RequestMatcher */
 	private RequestMatcher $matcher;
 
+	/** @var SchemaGraph */
+	private SchemaGraph $schema_graph;
+
 	public function __construct( Config $config, ThemeManager $theme_manager ) {
-		$this->matcher = new RequestMatcher( $config, $theme_manager );
+		$this->config       = $config;
+		$this->matcher      = new RequestMatcher( $config, $theme_manager );
+		$this->schema_graph = new SchemaGraph( $config );
 	}
 
 	public function register(): void {
@@ -48,7 +57,7 @@ class SeoHead implements Module {
 		}
 
 		// Defer to a dedicated SEO plugin when one is present.
-		if ( $this->seo_plugin_active() ) {
+		if ( self::seo_plugin_active() ) {
 			return;
 		}
 
@@ -64,7 +73,7 @@ class SeoHead implements Module {
 	/**
 	 * Detect a third-party SEO plugin that already owns head output.
 	 */
-	protected function seo_plugin_active(): bool {
+	public static function seo_plugin_active(): bool {
 		$active = defined( 'WPSEO_VERSION' )        // Yoast SEO.
 			|| defined( 'RANK_MATH_VERSION' )        // Rank Math.
 			|| defined( 'AIOSEO_VERSION' )           // All in One SEO.
@@ -76,6 +85,13 @@ class SeoHead implements Module {
 
 	/**
 	 * Assemble the SEO data for the current query.
+	 *
+	 * Branch order matters: a static front page satisfies both is_front_page()
+	 * and is_singular(), and the front page must win.
+	 *
+	 * Robots meta is intentionally absent here: core's wp_robots runs at
+	 * wp_head priority 1 and HtmlDocument captures its output, so SeoHead
+	 * never emits (or competes with) a robots tag.
 	 *
 	 * @return array{description:string,canonical:string,og:array<string,string>,twitter:array<string,string>,jsonld:?array}
 	 */
@@ -89,25 +105,21 @@ class SeoHead implements Module {
 			'jsonld'      => null,
 		);
 
-		if ( is_singular() ) {
-			$post                = get_queried_object();
-			$title               = (string) get_the_title( $post );
-			$canonical           = (string) ( wp_get_canonical_url( $post ) ?: get_permalink( $post ) );
-			$image               = $this->post_image( $post );
-			$meta['description'] = $this->clip( $this->post_description( $post ) );
-			$meta['canonical']   = $canonical;
-			$meta['og']          = array(
-				'type'        => is_singular( 'post' ) ? 'article' : 'website',
-				'title'       => $title,
-				'description' => $meta['description'],
-				'url'         => $canonical,
-				'site_name'   => $site_name,
-				'image'       => $image,
-			);
-			$meta['jsonld']      = $this->article_jsonld( $post, $title, $canonical, $image, $site_name );
-		} elseif ( is_front_page() || is_home() ) {
-			$canonical           = home_url( '/' );
-			$meta['description'] = $this->clip( (string) get_bloginfo( 'description' ) );
+		if ( is_front_page() || is_home() ) {
+			$canonical  = home_url( '/' );
+			$front_post = null;
+			$front_id   = (int) get_option( 'page_on_front' );
+			if ( $front_id > 0 ) {
+				$front_post = get_post( $front_id );
+			}
+
+			$description = $front_post ? self::clip( $this->post_description( $front_post ) ) : '';
+			if ( '' === $description ) {
+				$description = self::clip( (string) get_bloginfo( 'description' ) );
+			}
+
+			$image               = $this->resolve_social_image( $front_post );
+			$meta['description'] = $description;
 			$meta['canonical']   = $canonical;
 			$meta['og']          = array(
 				'type'        => 'website',
@@ -115,17 +127,29 @@ class SeoHead implements Module {
 				'description' => $meta['description'],
 				'url'         => $canonical,
 				'site_name'   => $site_name,
-				'image'       => '',
+				'image'       => $image['url'],
 			);
-			$meta['jsonld']      = array(
-				'@context' => 'https://schema.org',
-				'@type'    => 'WebSite',
-				'name'     => $site_name,
-				'url'      => $canonical,
+			$meta['jsonld']      = $this->schema_graph->build();
+		} elseif ( is_singular() ) {
+			$post                = get_queried_object();
+			$title               = (string) get_the_title( $post );
+			$canonical           = (string) ( wp_get_canonical_url( $post ) ?: get_permalink( $post ) );
+			$image               = $this->resolve_social_image( $post );
+			$meta['description'] = self::clip( $this->post_description( $post ) );
+			$meta['canonical']   = $canonical;
+			$meta['og']          = array(
+				'type'        => is_singular( 'post' ) ? 'article' : 'website',
+				'title'       => $title,
+				'description' => $meta['description'],
+				'url'         => $canonical,
+				'site_name'   => $site_name,
+				'image'       => $image['url'],
 			);
+			$meta['jsonld']      = $this->schema_graph->build();
 		} elseif ( is_category() || is_tag() || is_tax() ) {
 			$term                = get_queried_object();
-			$meta['description'] = $this->clip( (string) ( is_object( $term ) ? term_description( $term ) : '' ) );
+			$image               = $this->resolve_social_image();
+			$meta['description'] = self::clip( (string) ( is_object( $term ) ? term_description( $term ) : '' ) );
 			$meta['canonical']   = (string) get_term_link( $term );
 			$meta['og']          = array(
 				'type'        => 'website',
@@ -133,9 +157,63 @@ class SeoHead implements Module {
 				'description' => $meta['description'],
 				'url'         => $meta['canonical'],
 				'site_name'   => $site_name,
-				'image'       => '',
+				'image'       => $image['url'],
+			);
+			$meta['jsonld']      = $this->schema_graph->build();
+		} elseif ( is_author() ) {
+			$user                = get_queried_object();
+			$author_id           = is_object( $user ) && isset( $user->ID ) ? (int) $user->ID : 0;
+			$image               = $this->resolve_social_image();
+			$meta['description'] = self::clip( (string) get_the_author_meta( 'description', $author_id ) );
+			$meta['canonical']   = (string) get_author_posts_url( $author_id );
+			$meta['og']          = array(
+				'type'        => 'website',
+				'title'       => (string) get_the_author_meta( 'display_name', $author_id ),
+				'description' => $meta['description'],
+				'url'         => $meta['canonical'],
+				'site_name'   => $site_name,
+				'image'       => $image['url'],
+			);
+			$meta['jsonld']      = $this->schema_graph->build();
+		} elseif ( is_post_type_archive() ) {
+			$object              = get_queried_object();
+			$label               = is_object( $object ) && isset( $object->labels->name ) ? (string) $object->labels->name : '';
+			$post_type           = is_object( $object ) && isset( $object->name ) ? (string) $object->name : '';
+			$image               = $this->resolve_social_image();
+			$meta['description'] = self::clip( (string) get_the_post_type_description() );
+			$meta['canonical']   = '' !== $post_type ? (string) ( get_post_type_archive_link( $post_type ) ?: '' ) : '';
+			$meta['og']          = array(
+				'type'        => 'website',
+				'title'       => '' !== $label ? $label : $site_name,
+				'description' => $meta['description'],
+				'url'         => $meta['canonical'],
+				'site_name'   => $site_name,
+				'image'       => $image['url'],
+			);
+			$meta['jsonld']      = $this->schema_graph->build();
+		} elseif ( is_date() ) {
+			$image             = $this->resolve_social_image();
+			$meta['canonical'] = $this->date_archive_link();
+			$meta['og']        = array(
+				'type'        => 'website',
+				'title'       => $site_name,
+				'description' => '',
+				'url'         => $meta['canonical'],
+				'site_name'   => $site_name,
+				'image'       => $image['url'],
+			);
+			$meta['jsonld']    = $this->schema_graph->build();
+		} elseif ( is_search() ) {
+			$image      = $this->resolve_social_image();
+			$meta['og'] = array(
+				'type'      => 'website',
+				'title'     => (string) get_search_query(),
+				'site_name' => $site_name,
+				'image'     => $image['url'],
 			);
 		}
+		// is_404() (and anything unmatched) intentionally keeps the empty
+		// defaults: no canonical, no og, no jsonld.
 
 		if ( ! empty( $meta['og'] ) ) {
 			$meta['twitter'] = array(
@@ -208,68 +286,93 @@ class SeoHead implements Module {
 	}
 
 	/**
-	 * Featured-image URL for a post, or '' when none.
+	 * Resolve the social-share image through the site-wide fallback chain:
+	 * featured image (large) → custom logo → site icon → configured
+	 * seo.default_image. Every og-rendering branch shares this chain so
+	 * unfurls never come up blank on a branded site.
 	 *
-	 * @param mixed $post
+	 * @param mixed $post Optional post whose featured image leads the chain.
+	 * @return array{url:string,id:int}
 	 */
-	protected function post_image( $post ): string {
-		$id = isset( $post->ID ) ? (int) $post->ID : 0;
-		if ( $id <= 0 ) {
-			return '';
+	protected function resolve_social_image( $post = null ): array {
+		if ( is_object( $post ) && ! empty( $post->ID ) ) {
+			$thumb_id = (int) get_post_thumbnail_id( (int) $post->ID );
+			if ( $thumb_id > 0 ) {
+				$src = wp_get_attachment_image_url( $thumb_id, 'large' );
+				if ( is_string( $src ) && '' !== $src ) {
+					return array(
+						'url' => $src,
+						'id'  => $thumb_id,
+					);
+				}
+			}
 		}
-		$thumb_id = get_post_thumbnail_id( $id );
-		if ( ! $thumb_id ) {
-			return '';
-		}
-		$src = wp_get_attachment_image_url( $thumb_id, 'large' );
-		return is_string( $src ) ? $src : '';
-	}
 
-	/**
-	 * Minimal Article JSON-LD for a singular post.
-	 *
-	 * @param mixed $post
-	 * @return array<string,mixed>
-	 */
-	protected function article_jsonld( $post, string $title, string $canonical, string $image, string $site_name ): array {
-		$node = array(
-			'@context'         => 'https://schema.org',
-			'@type'            => is_singular( 'post' ) ? 'Article' : 'WebPage',
-			'headline'         => $title,
-			'mainEntityOfPage' => $canonical,
-			'url'              => $canonical,
-			'publisher'        => array(
-				'@type' => 'Organization',
-				'name'  => $site_name,
-			),
-		);
-
-		if ( '' !== $image ) {
-			$node['image'] = $image;
-		}
-		if ( isset( $post->post_date_gmt ) ) {
-			$node['datePublished'] = gmdate( 'c', strtotime( (string) $post->post_date_gmt . ' UTC' ) );
-		}
-		if ( isset( $post->post_modified_gmt ) ) {
-			$node['dateModified'] = gmdate( 'c', strtotime( (string) $post->post_modified_gmt . ' UTC' ) );
-		}
-		if ( isset( $post->post_author ) ) {
-			$author = get_the_author_meta( 'display_name', (int) $post->post_author );
-			if ( is_string( $author ) && '' !== $author ) {
-				$node['author'] = array(
-					'@type' => 'Person',
-					'name'  => $author,
+		$logo_id = (int) get_theme_mod( 'custom_logo' );
+		if ( $logo_id > 0 ) {
+			$src = wp_get_attachment_image_url( $logo_id, 'full' );
+			if ( is_string( $src ) && '' !== $src ) {
+				return array(
+					'url' => $src,
+					'id'  => $logo_id,
 				);
 			}
 		}
 
-		return $node;
+		$icon = (string) get_site_icon_url( 512 );
+		if ( '' !== $icon ) {
+			return array(
+				'url' => $icon,
+				'id'  => (int) get_option( 'site_icon' ),
+			);
+		}
+
+		$default = (string) $this->config->get( 'seo.default_image', '' );
+		if ( '' !== $default ) {
+			return array(
+				'url' => $default,
+				'id'  => 0,
+			);
+		}
+
+		return array(
+			'url' => '',
+			'id'  => 0,
+		);
+	}
+
+	/**
+	 * Featured-image URL for a post, or the site-wide fallback chain.
+	 * Thin BC wrapper around resolve_social_image().
+	 *
+	 * @param mixed $post
+	 */
+	protected function post_image( $post ): string {
+		$image = $this->resolve_social_image( $post );
+		return $image['url'];
+	}
+
+	/**
+	 * Canonical URL of the current date archive.
+	 */
+	protected function date_archive_link(): string {
+		$year     = (int) get_query_var( 'year' );
+		$monthnum = (int) get_query_var( 'monthnum' );
+		$day      = (int) get_query_var( 'day' );
+
+		if ( is_day() ) {
+			return (string) get_day_link( $year, $monthnum, $day );
+		}
+		if ( is_month() ) {
+			return (string) get_month_link( $year, $monthnum );
+		}
+		return (string) get_year_link( $year );
 	}
 
 	/**
 	 * Collapse whitespace and clip to a description-friendly length.
 	 */
-	protected function clip( string $text, int $limit = 160 ): string {
+	public static function clip( string $text, int $limit = 160 ): string {
 		$text = trim( preg_replace( '/\s+/', ' ', wp_strip_all_tags( $text ) ) ?? '' );
 		if ( mb_strlen( $text ) <= $limit ) {
 			return $text;

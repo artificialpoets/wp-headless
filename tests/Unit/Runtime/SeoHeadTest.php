@@ -28,6 +28,12 @@ class ExposedSeoHead extends SeoHead {
 	public function exposeClip( string $text, int $limit = 160 ): string {
 		return $this->clip( $text, $limit );
 	}
+	public function exposeBuildMeta(): array {
+		return $this->build_meta();
+	}
+	public function exposeResolveSocialImage( $post = null ): array {
+		return $this->resolve_social_image( $post );
+	}
 }
 
 class SeoHeadTest extends TestCase {
@@ -48,9 +54,14 @@ class SeoHeadTest extends TestCase {
 		parent::tearDown();
 	}
 
-	private function make(): ExposedSeoHead {
+	private function make( array $config_values = array() ): ExposedSeoHead {
 		$config = $this->getMockBuilder( Config::class )->disableOriginalConstructor()->getMock();
-		$tm     = $this->getMockBuilder( ThemeManager::class )->disableOriginalConstructor()->getMock();
+		$config->method( 'get' )->willReturnCallback(
+			static function ( $key, $default = null ) use ( $config_values ) {
+				return array_key_exists( $key, $config_values ) ? $config_values[ $key ] : $default;
+			}
+		);
+		$tm = $this->getMockBuilder( ThemeManager::class )->disableOriginalConstructor()->getMock();
 		return new ExposedSeoHead( $config, $tm );
 	}
 
@@ -125,5 +136,87 @@ class SeoHeadTest extends TestCase {
 		$this->assertLessThanOrEqual( 40, mb_strlen( $out ) );
 		$this->assertStringEndsWith( '…', $out );
 		$this->assertStringNotContainsString( 'wor…', $out ); // clipped at a space, not mid-word
+	}
+
+	// --- build_meta branch order ---
+
+	public function test_front_page_beats_singular_in_build_meta(): void {
+		// A static front page satisfies BOTH conditionals; the front page must win.
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_singular' )->justReturn( true );
+		Functions\when( 'is_home' )->justReturn( false );
+		Functions\when( 'home_url' )->alias( static fn( $path = '' ) => 'https://x.test' . $path );
+		Functions\when( 'get_bloginfo' )->alias( static fn( $key ) => 'name' === $key ? 'X Test' : 'Tagline here.' );
+		Functions\when( 'get_option' )->justReturn( 0 );       // No page_on_front.
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );     // No custom logo.
+		Functions\when( 'get_site_icon_url' )->justReturn( '' ); // No site icon.
+		// SchemaGraph runs on this branch too.
+		Functions\when( 'is_search' )->justReturn( false );
+		Functions\when( 'is_404' )->justReturn( false );
+		Functions\when( 'get_queried_object' )->justReturn( null );
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+
+		$meta = $this->make()->exposeBuildMeta();
+
+		$this->assertSame( 'https://x.test/', $meta['canonical'] ); // home_url('/'), not a permalink.
+		$this->assertSame( 'X Test', $meta['og']['title'] );        // Site name, not a post title.
+		$this->assertSame( 'website', $meta['og']['type'] );
+		$this->assertIsArray( $meta['jsonld'] );
+		$this->assertSame( 'https://schema.org', $meta['jsonld']['@context'] );
+	}
+
+	public function test_404_yields_empty_og_and_null_jsonld(): void {
+		foreach ( array( 'is_front_page', 'is_home', 'is_singular', 'is_category', 'is_tag', 'is_tax', 'is_author', 'is_post_type_archive', 'is_date', 'is_search' ) as $conditional ) {
+			Functions\when( $conditional )->justReturn( false );
+		}
+		Functions\when( 'is_404' )->justReturn( true );
+		Functions\when( 'get_bloginfo' )->justReturn( 'X Test' );
+
+		$meta = $this->make()->exposeBuildMeta();
+
+		$this->assertSame( '', $meta['description'] );
+		$this->assertSame( '', $meta['canonical'] );
+		$this->assertSame( array(), $meta['og'] );
+		$this->assertSame( array(), $meta['twitter'] );
+		$this->assertNull( $meta['jsonld'] );
+	}
+
+	// --- resolve_social_image fallback chain ---
+
+	public function test_social_image_falls_back_to_custom_logo_without_thumbnail(): void {
+		$post = (object) array( 'ID' => 10 );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_theme_mod' )->justReturn( 5 );
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			static fn( $id, $size = '' ) => 5 === $id && 'full' === $size ? 'https://x.test/logo.png' : false
+		);
+
+		$this->assertSame(
+			array( 'url' => 'https://x.test/logo.png', 'id' => 5 ),
+			$this->make()->exposeResolveSocialImage( $post )
+		);
+	}
+
+	public function test_social_image_falls_back_to_site_icon_without_logo(): void {
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( 'https://x.test/icon-512.png' );
+		Functions\when( 'get_option' )->alias( static fn( $key ) => 'site_icon' === $key ? 42 : 0 );
+
+		$this->assertSame(
+			array( 'url' => 'https://x.test/icon-512.png', 'id' => 42 ),
+			$this->make()->exposeResolveSocialImage()
+		);
+	}
+
+	public function test_social_image_falls_back_to_config_default_when_chain_is_empty(): void {
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+
+		$seo = $this->make( array( 'seo.default_image' => 'https://x.test/default.png' ) );
+
+		$this->assertSame(
+			array( 'url' => 'https://x.test/default.png', 'id' => 0 ),
+			$seo->exposeResolveSocialImage()
+		);
 	}
 }
