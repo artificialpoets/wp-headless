@@ -31,34 +31,143 @@ class Plugin {
 	/** @var ThemeManager */
 	private ThemeManager $theme_manager;
 
-	/** @var array<int, Module> */
+	/**
+	 * Keyed module map. The key is the module's public identity: it is the
+	 * config toggle (`modules.{key}.enabled`), the handle add-ons use to
+	 * replace or remove a built-in via the `wp_headless_modules` filter,
+	 * and the row identity on the settings status page.
+	 *
+	 * @var array<string, Module>
+	 */
 	private array $modules = array();
 
-	public function __construct() {
-		$this->config        = new Config();
-		$this->theme_manager = new ThemeManager();
+	/** @var bool Whether register() has run (guards double boot). */
+	private bool $booted = false;
+
+	/** @var array<string, bool> Keys of modules whose register() ran. */
+	private array $registered = array();
+
+	/**
+	 * @param Config|null                $config        Optional config (tests/embedders).
+	 * @param ThemeManager|null          $theme_manager Optional theme manager.
+	 * @param array<string, Module>|null $modules       Optional module map override;
+	 *                                                  null builds the default map.
+	 */
+	public function __construct( ?Config $config = null, ?ThemeManager $theme_manager = null, ?array $modules = null ) {
+		$this->config        = $config ?? new Config();
+		$this->theme_manager = $theme_manager ?? new ThemeManager();
+
+		if ( null !== $modules ) {
+			$this->modules = $modules;
+			return;
+		}
 
 		$this->modules = array(
-			new RewriteRules( $this->config ),
-			new NavMenus(),
-			new BlockAnnotator(),
-			new AssetProxy( $this->config, $this->theme_manager ),
-			new FrontendBridge( $this->config, $this->theme_manager ),
-			new SeoHead( $this->config, $this->theme_manager ),
-			new ContentFields( $this->config ),
-			new Comments(),
-			new MenuEndpoint( $this->config ),
-			new RuntimeEndpoint( $this->config, $this->theme_manager ),
-			new ResolveEndpoint( $this->config ),
-			new Cors( $this->config ),
-			new SettingsPage( $this->theme_manager, $this->config ),
+			'rewrite_rules'    => new RewriteRules( $this->config ),
+			'nav_menus'        => new NavMenus(),
+			'block_annotator'  => new BlockAnnotator(),
+			'asset_proxy'      => new AssetProxy( $this->config, $this->theme_manager ),
+			'frontend_bridge'  => new FrontendBridge( $this->config, $this->theme_manager ),
+			'seo_head'         => new SeoHead( $this->config, $this->theme_manager ),
+			'content_fields'   => new ContentFields( $this->config ),
+			'comments'         => new Comments(),
+			'menu_endpoint'    => new MenuEndpoint( $this->config ),
+			'runtime_endpoint' => new RuntimeEndpoint( $this->config, $this->theme_manager ),
+			'resolve_endpoint' => new ResolveEndpoint( $this->config ),
+			'cors'             => new Cors( $this->config ),
+			'head_cleanup'     => new Seo\HeadCleanup( $this->config, $this->theme_manager ),
+			'llms_txt'         => new Seo\LlmsTxt( $this->config ),
+			'robots_txt'       => new Seo\RobotsTxt( $this->config ),
+			'settings_page'    => new SettingsPage( $this->theme_manager, $this->config ),
 		);
 	}
 
 	public function register(): void {
-		foreach ( $this->modules as $module ) {
-			$module->register();
+		if ( $this->booted ) {
+			return;
 		}
+
+		/**
+		 * Filters the module map before boot.
+		 *
+		 * Add-on plugins register their own Module implementations here (or
+		 * replace/remove built-ins by key). Runs once, on plugins_loaded.
+		 *
+		 * @param array<string, Module> $modules       Keyed module map.
+		 * @param Config                $config        Plugin config.
+		 * @param ThemeManager          $theme_manager Theme manager.
+		 */
+		$modules = apply_filters( 'wp_headless_modules', $this->modules, $this->config, $this->theme_manager );
+
+		foreach ( $modules as $key => $module ) {
+			if ( ! $module instanceof Module ) {
+				continue;
+			}
+
+			$this->modules[ (string) $key ] = $module;
+
+			if ( ! $this->module_enabled( (string) $key ) ) {
+				continue;
+			}
+
+			$module->register();
+			$this->registered[ (string) $key ] = true;
+		}
+
+		$this->booted = true;
+
+		/**
+		 * Fires once the plugin has booted all enabled modules.
+		 *
+		 * @param Plugin $plugin The booted plugin instance.
+		 */
+		do_action( 'wp_headless_booted', $this );
+	}
+
+	/**
+	 * Register an additional module after construction.
+	 *
+	 * Intended for code that runs too late for the `wp_headless_modules`
+	 * filter (themes load after plugins_loaded). When the plugin has already
+	 * booted and the module is config-enabled, register() is called
+	 * immediately.
+	 */
+	public function add_module( string $key, Module $module ): void {
+		$this->modules[ $key ] = $module;
+
+		if ( $this->booted && $this->module_enabled( $key ) ) {
+			$module->register();
+			$this->registered[ $key ] = true;
+		}
+	}
+
+	/**
+	 * Status metadata for every known module (settings page, debugging).
+	 *
+	 * @return array<string, array{class: string, enabled: bool, registered: bool}>
+	 */
+	public function modules(): array {
+		$status = array();
+
+		foreach ( $this->modules as $key => $module ) {
+			$status[ $key ] = array(
+				'class'      => get_class( $module ),
+				'enabled'    => $this->module_enabled( $key ),
+				'registered' => ! empty( $this->registered[ $key ] ),
+			);
+		}
+
+		return $status;
+	}
+
+	/** The shared config instance (add-ons and the settings page read it). */
+	public function config(): Config {
+		return $this->config;
+	}
+
+	/** Whether a module key is enabled (default true; config can disable). */
+	private function module_enabled( string $key ): bool {
+		return false !== $this->config->get( 'modules.' . $key . '.enabled', true );
 	}
 
 	public function activate(): void {

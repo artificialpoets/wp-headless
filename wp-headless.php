@@ -63,7 +63,21 @@ function wp_headless_plugin() {
 	return $plugin;
 }
 
-wp_headless_plugin()->register();
+/*
+ * Boot on plugins_loaded (priority 1) rather than at include time so that
+ * every plugin — regardless of load order — can hook `wp_headless_modules`
+ * and `wp_headless_config` before the module map and config are locked in.
+ * All built-in modules only attach hooks that fire later (init,
+ * parse_request, template_redirect, wp_head, rest_api_init, admin_menu),
+ * so deferral does not change behavior.
+ */
+add_action(
+	'plugins_loaded',
+	static function () {
+		wp_headless_plugin()->register();
+	},
+	1
+);
 
 register_activation_hook(
 	WP_HEADLESS_FILE,
