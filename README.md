@@ -130,7 +130,7 @@ All hooks use the `wp_headless_*` prefix. **The complete, canonical reference
 | Hook | Type | Parameters | Return | When |
 |------|------|------------|--------|------|
 | `wp_headless_config` | filter | `array $config` | `array` | After config sources are merged |
-| `wp_headless_modules` | filter | `array<string, Module>, Config, ThemeManager` | `array` | Once on `after_setup_theme@1` — the add-on/module registration point |
+| `wp_headless_modules` | filter | `array<string, Module>, Config, ThemeManager` | `array` | Once on `after_setup_theme@100` — the add-on/module registration point |
 | `wp_headless_should_serve_frontend` | filter | `bool, Config` | `bool` | Every public request, before interception |
 | `wp_headless_runtime_data` | filter | `array, Config, ?string $url` | `array` | After the runtime payload is built |
 | `wp_headless_seo_meta` | filter | `array $meta` | `array` | Before SEO head output (shape frozen — see docs/HOOKS.md) |

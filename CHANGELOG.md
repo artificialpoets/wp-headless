@@ -36,7 +36,7 @@ machine-readable content channels — this release makes them first-class.
 - og:image fallback chain: featured image → custom logo → site icon →
   `seo.default_image` config — social cards are no longer imageless.
 - `docs/HOOKS.md`: complete hook API reference with semver policy.
-- Boot now happens on `after_setup_theme@1` (was include time) so every
+- Boot now happens on `after_setup_theme@100` (was include time) so every
   plugin AND the active theme can hook `wp_headless_modules`/`wp_headless_config` regardless of
   load order.
 

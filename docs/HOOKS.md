@@ -17,7 +17,7 @@ Two shapes are explicitly frozen:
 
 | Hook | Type | Signature | Fires |
 |------|------|-----------|-------|
-| `wp_headless_modules` | filter | `array<string, Module> $modules, Config $config, ThemeManager $tm → array` | Once, on `after_setup_theme@1`, before any module boots (theme functions.php is already included — themes can hook it too). Add your own `Contracts\Module` implementations, or replace/remove built-ins by key. |
+| `wp_headless_modules` | filter | `array<string, Module> $modules, Config $config, ThemeManager $tm → array` | Once, on `after_setup_theme@100`, before any module boots (theme functions.php is already included — themes can hook it too). Add your own `Contracts\Module` implementations, or replace/remove built-ins by key. |
 | `wp_headless_booted` | action | `Plugin $plugin` | Once, after every enabled module registered. |
 
 Built-in module keys: `rewrite_rules`, `nav_menus`, `block_annotator`,
@@ -47,7 +47,7 @@ add_filter( 'wp_headless_modules', function ( array $modules, $config ) {
 ```
 
 Themes work too: theme `functions.php` is included *before*
-`after_setup_theme@1` fires, so a theme can register the same filter at
+`after_setup_theme@100` fires, so a theme can register the same filter at
 include time (this is also why theme `wp_headless_config` filters apply).
 Code that runs even later can still join via `add_module()`, which
 registers immediately once the plugin has booted:
