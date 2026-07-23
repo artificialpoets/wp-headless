@@ -365,8 +365,21 @@ class Prerender implements Module {
 
 		$front_id = 'page' === get_option( 'show_on_front' ) ? (int) get_option( 'page_on_front' ) : 0;
 
+		// The posts page's listing is typically client-fetched, so a
+		// headless render paints it empty — a wrong-layout shell is
+		// worse than a clean SPA boot. Excluded until the theme embeds
+		// archive content; opt in via modules.prerender.include_posts_page.
+		$posts_page_id = 0;
+		if ( false === $this->config->get( 'modules.prerender.include_posts_page', false ) ) {
+			$posts_page_id = (int) get_option( 'page_for_posts' );
+		}
+
 		$routes = array();
 		foreach ( $post_ids as $post_id ) {
+			if ( $posts_page_id && (int) $post_id === $posts_page_id ) {
+				self::invalidate( (int) $post_id );
+				continue;
+			}
 			$permalink = get_permalink( $post_id );
 			$path      = $permalink ? wp_parse_url( $permalink, PHP_URL_PATH ) : null;
 
