@@ -17,6 +17,22 @@ machine-readable content channels — this release makes them first-class.
   remove modules; `Plugin::add_module()` covers late registrants (themes);
   `modules.{key}.enabled => false` config disables any module per site.
   New `wp_headless_booted` action (the plugin's first action).
+- **Prerender module** (`Runtime\Prerender`): first-paint pre-rendering as
+  a platform capability. Stores per-post pre-rendered HTML
+  (script-stripped, size-capped postmeta) and serves it as a
+  `#wp-headless-prerender` sibling injected before `#root` at
+  `wp_headless_document_html@10` — theme fallback shells conventionally
+  hook at 20 and skip when the container is present; the frontend removes
+  the container when it commits its own chrome. Invalidates on post
+  save/delete and theme switch; themes/hosts call
+  `Prerender::invalidate()/flush()` for their own triggers and react via
+  the new `wp_headless_prerender_invalidated` action (regeneration
+  queues, CDN purges). `wp headless prerender [--post=<id>] [--flush]`
+  shells a configurable renderer command
+  (`modules.prerender.command`, tokens `{renderer}/{theme}/{base}/{routes}/{out}`;
+  default runs the active theme's `tools/render-pages.mjs` — plain-Node
+  SSR, no browser). Config: `modules.prerender.post_types` (default
+  `['page']`).
 - **Schema.org graph** (`Seo\SchemaGraph`): the SEO head's JSON-LD is now a
   connected `@graph` with stable `@id` anchors — Organization (+logo),
   WebSite (+SearchAction), WebPage/CollectionPage/ProfilePage,

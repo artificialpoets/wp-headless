@@ -21,6 +21,7 @@ use WPHeadless\Runtime\AssetProxy;
 use WPHeadless\Runtime\BlockAnnotator;
 use WPHeadless\Runtime\FrontendBridge;
 use WPHeadless\Runtime\NavMenus;
+use WPHeadless\Runtime\Prerender;
 use WPHeadless\Runtime\SeoHead;
 use WPHeadless\Theme\ThemeManager;
 
@@ -68,6 +69,7 @@ class Plugin {
 			'block_annotator'  => new BlockAnnotator(),
 			'asset_proxy'      => new AssetProxy( $this->config, $this->theme_manager ),
 			'frontend_bridge'  => new FrontendBridge( $this->config, $this->theme_manager ),
+			'prerender'        => new Prerender( $this->config ),
 			'seo_head'         => new SeoHead( $this->config, $this->theme_manager ),
 			'content_fields'   => new ContentFields( $this->config ),
 			'comments'         => new Comments(),

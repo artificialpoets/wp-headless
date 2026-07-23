@@ -123,3 +123,22 @@ add_filter( 'wp_headless_schema_pieces', function ( array $pieces, array $contex
 | `wp_headless_rest_fields` | filter | `array $fields, array $types, Config $config → array` | Before `register_rest_field` runs. |
 | `wp_headless_menu_item` | filter | `array $item, int $id → array` | Per node while building menu trees (classic menus and `wp_navigation`). |
 | `wp_headless_allow_anonymous_comments` | filter | `bool $allow → bool` | On `rest_allow_anonymous_comments`. |
+
+## Pre-render
+
+The Prerender module stores per-post first-paint HTML and injects it as
+`<div id="wp-headless-prerender">…</div>` immediately before `#root`
+(`wp_headless_document_html@10`). Contract: theme-side fallback shells
+hook the same filter at priority 20 and skip when that container is
+already present; the frontend removes the container when it commits its
+own chrome. Themes generate the markup (typically their own SSR bundle
+via `wp headless prerender`) — the plugin stores (`Prerender::store()`),
+serves, and invalidates (`Prerender::invalidate()`, `Prerender::flush()`).
+
+| Hook | Type | Signature | Fires |
+|------|------|-----------|-------|
+| `wp_headless_prerender_invalidated` | action | `int\|null $post_id` | After a stored pre-render is invalidated (`null` = full flush). Hosts queue regeneration or CDN purges here. |
+
+Config: `modules.prerender.enabled`, `modules.prerender.post_types`
+(default `['page']`), `modules.prerender.command` (renderer shell
+template; tokens `{renderer}`, `{theme}`, `{base}`, `{routes}`, `{out}`).
