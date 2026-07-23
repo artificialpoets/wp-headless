@@ -55,9 +55,86 @@ class Prerender implements Module {
 		add_action( 'deleted_post', array( __CLASS__, 'invalidate' ) );
 		add_action( 'switch_theme', array( __CLASS__, 'flush' ) );
 
+		// Self-healing: every invalidation queues a (debounced) cron
+		// regeneration, so stale-until-someone-runs-the-CLI stops being
+		// a state the site can be in. Hosts with their own workers
+		// disable via `modules.prerender.auto_regenerate => false` and
+		// consume `wp_headless_prerender_invalidated` instead.
+		add_action( 'wp_headless_prerender_invalidated', array( $this, 'queue_regeneration' ) );
+		add_action( 'wp_headless_prerender_regenerate', array( $this, 'run_regeneration' ) );
+
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'headless prerender', array( $this, 'cli' ) );
 		}
+	}
+
+	/**
+	 * Queue an async regeneration for the invalidated scope.
+	 *
+	 * @param int|null $post_id Invalidated post, or null for a full flush.
+	 */
+	public function queue_regeneration( $post_id ): void {
+		if ( false === $this->config->get( 'modules.prerender.auto_regenerate', true ) ) {
+			return;
+		}
+
+		if ( ! self::can_shell() ) {
+			return;
+		}
+
+		$scope = null === $post_id ? 'all' : (string) (int) $post_id;
+		if ( ! wp_next_scheduled( 'wp_headless_prerender_regenerate', array( $scope ) ) ) {
+			wp_schedule_single_event( time() + 10, 'wp_headless_prerender_regenerate', array( $scope ) );
+		}
+	}
+
+	/**
+	 * Cron callback: regenerate one post or everything.
+	 *
+	 * @param string $scope 'all' or a post ID.
+	 */
+	public function run_regeneration( $scope = 'all' ): void {
+		$this->generate( 'all' === $scope ? null : array( (int) $scope ) );
+	}
+
+	/** Whether this environment can shell out to the renderer. */
+	public static function can_shell(): bool {
+		return function_exists( 'shell_exec' )
+			&& false === strpos( (string) ini_get( 'disable_functions' ), 'shell_exec' );
+	}
+
+	/**
+	 * The Node binary for the default renderer command. Web contexts
+	 * (cron loopbacks) run with a minimal PATH, so prefer an absolute
+	 * binary when one can be found.
+	 */
+	private function node_bin(): string {
+		$configured = (string) $this->config->get( 'modules.prerender.node_bin', '' );
+		if ( '' !== $configured ) {
+			return $configured;
+		}
+
+		$candidates = array( '/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node' );
+
+		$home = getenv( 'HOME' );
+		if ( ! $home && ! empty( $_SERVER['HOME'] ) ) {
+			$home = (string) $_SERVER['HOME']; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		}
+		if ( $home ) {
+			$nvm = glob( rtrim( $home, '/' ) . '/.nvm/versions/node/*/bin/node' );
+			if ( $nvm ) {
+				natsort( $nvm );
+				array_unshift( $candidates, end( $nvm ) );
+			}
+		}
+
+		foreach ( $candidates as $candidate ) {
+			if ( is_executable( $candidate ) ) {
+				return $candidate;
+			}
+		}
+
+		return 'node';
 	}
 
 	/**
@@ -237,6 +314,25 @@ class Prerender implements Module {
 			return;
 		}
 
+		$only   = ! empty( $assoc_args['post'] ) ? array( absint( $assoc_args['post'] ) ) : null;
+		$result = $this->generate( $only );
+
+		if ( 0 === $result['total'] ) {
+			\WP_CLI::error( 'No published content found for the configured post types.' );
+		}
+
+		\WP_CLI::log( (string) $result['output'] );
+		\WP_CLI::success( sprintf( 'Stored %d/%d pre-renders.', $result['stored'], $result['total'] ) );
+	}
+
+	/**
+	 * The generation engine shared by the CLI and cron regeneration:
+	 * collect routes, shell the renderer, store the results.
+	 *
+	 * @param int[]|null $only Restrict to these post IDs (null = all).
+	 * @return array{stored: int, total: int, output: string}
+	 */
+	private function generate( ?array $only = null ): array {
 		$post_types = (array) $this->config->get( 'modules.prerender.post_types', array( 'page' ) );
 
 		$query_args = array(
@@ -245,13 +341,17 @@ class Prerender implements Module {
 			'posts_per_page' => -1,
 			'fields'         => 'ids',
 		);
-		if ( ! empty( $assoc_args['post'] ) ) {
-			$query_args['post__in'] = array( absint( $assoc_args['post'] ) );
+		if ( null !== $only ) {
+			$query_args['post__in'] = array_map( 'absint', $only );
 		}
 
 		$post_ids = get_posts( $query_args );
 		if ( ! $post_ids ) {
-			\WP_CLI::error( 'No published content found for the configured post types.' );
+			return array(
+				'stored' => 0,
+				'total'  => 0,
+				'output' => '',
+			);
 		}
 
 		$front_id = 'page' === get_option( 'show_on_front' ) ? (int) get_option( 'page_on_front' ) : 0;
@@ -281,11 +381,11 @@ class Prerender implements Module {
 		wp_mkdir_p( $tmp_dir );
 		file_put_contents( $routes_file, wp_json_encode( $routes ) );
 
-		$command_template = (string) $this->config->get(
-			'modules.prerender.command',
-			'node {renderer} --base={base} --routes={routes} --out={out}'
-		);
-		$command          = strtr(
+		$command_template = (string) $this->config->get( 'modules.prerender.command', '' );
+		if ( '' === $command_template ) {
+			$command_template = $this->node_bin() . ' {renderer} --base={base} --routes={routes} --out={out}';
+		}
+		$command = strtr(
 			$command_template,
 			array(
 				'{renderer}' => escapeshellarg( get_template_directory() . '/tools/render-pages.mjs' ),
@@ -296,9 +396,7 @@ class Prerender implements Module {
 			)
 		);
 
-		\WP_CLI::log( sprintf( 'Rendering %d routes: %s', count( $routes ), $command ) );
-		$output = shell_exec( $command . ' 2>&1' );
-		\WP_CLI::log( (string) $output );
+		$output = (string) shell_exec( $command . ' 2>&1' );
 
 		$stored = 0;
 		foreach ( $routes as $route ) {
@@ -314,6 +412,10 @@ class Prerender implements Module {
 		@unlink( $routes_file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 		@rmdir( $tmp_dir ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 
-		\WP_CLI::success( sprintf( 'Stored %d/%d pre-renders.', $stored, count( $routes ) ) );
+		return array(
+			'stored' => $stored,
+			'total'  => count( $routes ),
+			'output' => $output,
+		);
 	}
 }

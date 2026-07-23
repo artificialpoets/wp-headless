@@ -141,4 +141,10 @@ serves, and invalidates (`Prerender::invalidate()`, `Prerender::flush()`).
 
 Config: `modules.prerender.enabled`, `modules.prerender.post_types`
 (default `['page']`), `modules.prerender.command` (renderer shell
-template; tokens `{renderer}`, `{theme}`, `{base}`, `{routes}`, `{out}`).
+template; tokens `{renderer}`, `{theme}`, `{base}`, `{routes}`, `{out}`),
+`modules.prerender.auto_regenerate` (default `true`: invalidations queue
+a debounced `wp_headless_prerender_regenerate` cron event that reruns
+the renderer — disable when a host worker consumes the invalidated
+action instead), `modules.prerender.node_bin` (absolute Node binary for
+web-context cron runs; auto-detected from common install paths
+otherwise).

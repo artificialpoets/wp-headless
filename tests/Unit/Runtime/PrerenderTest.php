@@ -25,10 +25,15 @@ class PrerenderTest extends TestCase {
         parent::tearDown();
     }
 
-    private function makeModule(): Prerender {
+    private function makeModule( array $config_values = array() ): Prerender {
         $config = $this->getMockBuilder( Config::class )
             ->disableOriginalConstructor()
             ->getMock();
+        $config->method( 'get' )->willReturnCallback(
+            static function ( $key, $default = null ) use ( $config_values ) {
+                return array_key_exists( $key, $config_values ) ? $config_values[ $key ] : $default;
+            }
+        );
 
         return new Prerender( $config );
     }
@@ -110,6 +115,37 @@ class PrerenderTest extends TestCase {
         Functions\when( 'get_queried_object_id' )->justReturn( 7 );
         Functions\when( 'get_post_meta' )->justReturn( '' );
         $this->assertSame( $html, $this->makeModule()->inject( $html ) );
+    }
+
+    // --- queue_regeneration() ---
+
+    public function test_queue_schedules_debounced_regeneration(): void {
+        Functions\expect( 'wp_next_scheduled' )
+            ->once()
+            ->with( 'wp_headless_prerender_regenerate', array( '7' ) )
+            ->andReturn( false );
+        Functions\expect( 'wp_schedule_single_event' )
+            ->once()
+            ->with( \Mockery::type( 'int' ), 'wp_headless_prerender_regenerate', array( '7' ) );
+
+        $this->makeModule()->queue_regeneration( 7 );
+    }
+
+    public function test_queue_dedupes_pending_events_and_maps_full_flush(): void {
+        Functions\expect( 'wp_next_scheduled' )
+            ->once()
+            ->with( 'wp_headless_prerender_regenerate', array( 'all' ) )
+            ->andReturn( time() + 5 );
+        Functions\expect( 'wp_schedule_single_event' )->never();
+
+        $this->makeModule()->queue_regeneration( null );
+    }
+
+    public function test_queue_respects_auto_regenerate_off(): void {
+        Functions\expect( 'wp_next_scheduled' )->never();
+        Functions\expect( 'wp_schedule_single_event' )->never();
+
+        $this->makeModule( array( 'modules.prerender.auto_regenerate' => false ) )->queue_regeneration( 7 );
     }
 
     public function test_inject_requires_empty_root_needle(): void {

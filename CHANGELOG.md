@@ -31,8 +31,11 @@ machine-readable content channels — this release makes them first-class.
   shells a configurable renderer command
   (`modules.prerender.command`, tokens `{renderer}/{theme}/{base}/{routes}/{out}`;
   default runs the active theme's `tools/render-pages.mjs` — plain-Node
-  SSR, no browser). Config: `modules.prerender.post_types` (default
-  `['page']`).
+  SSR, no browser). Self-healing by default: every invalidation queues a
+  debounced cron regeneration (`modules.prerender.auto_regenerate`,
+  default on where `shell_exec` is available; `modules.prerender.node_bin`
+  pins the Node binary for thin-PATH web contexts). Config:
+  `modules.prerender.post_types` (default `['page']`).
 - **Schema.org graph** (`Seo\SchemaGraph`): the SEO head's JSON-LD is now a
   connected `@graph` with stable `@id` anchors — Organization (+logo),
   WebSite (+SearchAction), WebPage/CollectionPage/ProfilePage,
