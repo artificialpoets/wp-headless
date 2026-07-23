@@ -21,6 +21,10 @@ class PrerenderTest extends TestCase {
     }
 
     protected function tearDown(): void {
+        // Mockery expectations (Functions\expect) verify in
+        // Monkey\tearDown but do not count as PHPUnit assertions —
+        // credit them so expectation-only tests are not "risky".
+        $this->addToAssertionCount( \Mockery::getContainer()->mockery_getExpectationCount() );
         Monkey\tearDown();
         parent::tearDown();
     }
