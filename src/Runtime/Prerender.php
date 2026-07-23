@@ -254,10 +254,20 @@ class Prerender implements Module {
 			\WP_CLI::error( 'No published content found for the configured post types.' );
 		}
 
+		$front_id = 'page' === get_option( 'show_on_front' ) ? (int) get_option( 'page_on_front' ) : 0;
+
 		$routes = array();
 		foreach ( $post_ids as $post_id ) {
 			$permalink = get_permalink( $post_id );
 			$path      = $permalink ? wp_parse_url( $permalink, PHP_URL_PATH ) : null;
+
+			// The front page must render as '/' — its slug URL only
+			// canonical-redirects there, and the renderer renders the
+			// REQUESTED path (no redirect-following router).
+			if ( $front_id && (int) $post_id === $front_id ) {
+				$path = '/';
+			}
+
 			if ( $path ) {
 				$routes[] = array(
 					'path' => $path,
