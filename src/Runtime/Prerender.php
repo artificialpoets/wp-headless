@@ -145,11 +145,20 @@ class Prerender implements Module {
 	 * @return string
 	 */
 	public function inject( string $html ): string {
-		if ( ! is_singular() ) {
+		$post_id = 0;
+		if ( is_singular() ) {
+			$post_id = get_queried_object_id();
+		} elseif ( is_home() ) {
+			// The posts page resolves as is_home(), not is_singular(),
+			// but it is a real page with its own stored pre-render.
+			$post_id = (int) get_option( 'page_for_posts' );
+		}
+
+		if ( $post_id <= 0 ) {
 			return $html;
 		}
 
-		$snapshot = self::get( get_queried_object_id() );
+		$snapshot = self::get( $post_id );
 		if ( null === $snapshot ) {
 			return $html;
 		}

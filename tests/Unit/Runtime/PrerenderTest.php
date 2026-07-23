@@ -110,8 +110,21 @@ class PrerenderTest extends TestCase {
         );
     }
 
+    public function test_inject_serves_posts_page_via_is_home(): void {
+        Functions\when( 'is_singular' )->justReturn( false );
+        Functions\when( 'is_home' )->justReturn( true );
+        Functions\when( 'get_option' )->justReturn( 9 );
+        Functions\when( 'get_post_meta' )->justReturn( '<main>Blog</main>' );
+
+        $out = $this->makeModule()->inject( '<body><div id="root"></div></body>' );
+
+        $this->assertStringContainsString( 'id="' . Prerender::CONTAINER_ID . '"', $out );
+        $this->assertStringContainsString( '<main>Blog</main>', $out );
+    }
+
     public function test_inject_skips_non_singular_and_missing_snapshot(): void {
         Functions\when( 'is_singular' )->justReturn( false );
+        Functions\when( 'is_home' )->justReturn( false );
         $html = '<body><div id="root"></div></body>';
         $this->assertSame( $html, $this->makeModule()->inject( $html ) );
 
