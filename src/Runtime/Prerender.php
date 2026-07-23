@@ -68,7 +68,7 @@ class Prerender implements Module {
 		$wpdb->query( "CREATE TABLE IF NOT EXISTS {$table} (
 			post_id BIGINT(20) UNSIGNED NOT NULL,
 			html LONGTEXT NOT NULL,
-			generated DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00',
+			generated_at DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00',
 			PRIMARY KEY (post_id)
 		) {$charset}" ); // phpcs:ignore WordPress.DB
 
@@ -89,7 +89,7 @@ class Prerender implements Module {
 				array(
 					'post_id'   => (int) $row->post_id,
 					'html'      => (string) $row->meta_value,
-					'generated' => gmdate( 'Y-m-d H:i:s' ),
+					'generated_at' => gmdate( 'Y-m-d H:i:s' ),
 				),
 				array( '%d', '%s', '%s' )
 			);
@@ -282,17 +282,17 @@ class Prerender implements Module {
 		}
 
 		global $wpdb;
-		$wpdb->replace(
+		$written = $wpdb->replace(
 			self::table(),
 			array(
-				'post_id'   => $post_id,
-				'html'      => $html,
-				'generated' => gmdate( 'Y-m-d H:i:s' ),
+				'post_id'      => $post_id,
+				'html'         => $html,
+				'generated_at' => gmdate( 'Y-m-d H:i:s' ),
 			),
 			array( '%d', '%s', '%s' )
 		);
 
-		return true;
+		return false !== $written && $written > 0;
 	}
 
 	/**
