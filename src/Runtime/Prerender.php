@@ -39,6 +39,7 @@ class Prerender implements Module {
 	public const META_KEY     = '_wp_headless_prerender';
 	public const META_TIME    = '_wp_headless_prerender_time';
 	public const CONTAINER_ID = 'wp-headless-prerender';
+	public const TABLE_VERSION = '1';
 
 	/** Snapshots larger than this are refused at store time. */
 	public const MAX_BYTES = 1000000;
@@ -49,7 +50,62 @@ class Prerender implements Module {
 		$this->config = $config;
 	}
 
+	/** Dedicated storage table (postmeta polluted every post's meta cache). */
+	public static function table(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'headless_prerenders';
+	}
+
+	/** Create/upgrade the table + migrate legacy postmeta rows once. */
+	public static function install_table(): void {
+		if ( get_option( 'wp_headless_prerender_table_version' ) === self::TABLE_VERSION ) {
+			return;
+		}
+		global $wpdb;
+		$table   = self::table();
+		$charset = $wpdb->get_charset_collate();
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( "CREATE TABLE {$table} (
+			post_id BIGINT(20) UNSIGNED NOT NULL,
+			html LONGTEXT NOT NULL,
+			generated DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00',
+			PRIMARY KEY  (post_id)
+		) {$charset};" );
+
+		// Migrate the postmeta era, then drop those rows for good.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s",
+				self::META_KEY
+			)
+		);
+		foreach ( $rows as $row ) {
+			$wpdb->replace(
+				$table,
+				array(
+					'post_id'   => (int) $row->post_id,
+					'html'      => (string) $row->meta_value,
+					'generated' => gmdate( 'Y-m-d H:i:s' ),
+				),
+				array( '%d', '%s', '%s' )
+			);
+		}
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->postmeta} WHERE meta_key IN (%s, %s)",
+				self::META_KEY,
+				self::META_TIME
+			)
+		);
+
+		update_option( 'wp_headless_prerender_table_version', self::TABLE_VERSION );
+	}
+
 	public function register(): void {
+		// Version-gated (one autoloaded option read) — runs everywhere so
+		// REST/CLI/frontend contexts never race a missing table.
+		self::install_table();
 		add_filter( 'wp_headless_document_html', array( $this, 'inject' ), 10 );
 		add_action( 'save_post', array( $this, 'invalidate_on_save' ), 10, 2 );
 		add_action( 'deleted_post', array( __CLASS__, 'invalidate' ) );
@@ -184,7 +240,10 @@ class Prerender implements Module {
 			return null;
 		}
 
-		$snapshot = (string) get_post_meta( $post_id, self::META_KEY, true );
+		global $wpdb;
+		$snapshot = (string) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT html FROM ' . self::table() . ' WHERE post_id = %d', $post_id )
+		);
 		if ( '' === $snapshot ) {
 			return null;
 		}
@@ -219,8 +278,16 @@ class Prerender implements Module {
 			return false;
 		}
 
-		update_post_meta( $post_id, self::META_KEY, wp_slash( $html ) );
-		update_post_meta( $post_id, self::META_TIME, time() );
+		global $wpdb;
+		$wpdb->replace(
+			self::table(),
+			array(
+				'post_id'   => $post_id,
+				'html'      => $html,
+				'generated' => gmdate( 'Y-m-d H:i:s' ),
+			),
+			array( '%d', '%s', '%s' )
+		);
 
 		return true;
 	}
@@ -236,8 +303,8 @@ class Prerender implements Module {
 			return;
 		}
 
-		delete_post_meta( $post_id, self::META_KEY );
-		delete_post_meta( $post_id, self::META_TIME );
+		global $wpdb;
+		$wpdb->delete( self::table(), array( 'post_id' => $post_id ), array( '%d' ) );
 
 		/**
 		 * Fires when pre-rendered HTML is invalidated.
@@ -257,13 +324,7 @@ class Prerender implements Module {
 	public static function flush(): int {
 		global $wpdb;
 
-		$count = (int) $wpdb->query(
-			$wpdb->prepare(
-				"DELETE FROM {$wpdb->postmeta} WHERE meta_key IN (%s, %s)",
-				self::META_KEY,
-				self::META_TIME
-			)
-		);
+		$count = (int) $wpdb->query( 'DELETE FROM ' . self::table() ); // phpcs:ignore WordPress.DB
 
 		/** This action is documented in inject()'s invalidate(). */
 		do_action( 'wp_headless_prerender_invalidated', null );

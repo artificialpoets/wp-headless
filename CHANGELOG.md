@@ -19,7 +19,9 @@ machine-readable content channels — this release makes them first-class.
   New `wp_headless_booted` action (the plugin's first action).
 - **Prerender module** (`Runtime\Prerender`): first-paint pre-rendering as
   a platform capability. Stores per-post pre-rendered HTML
-  (script-stripped, size-capped postmeta) and serves it as a
+  (script-stripped, size-capped) in a dedicated `headless_prerenders`
+  table — postmeta storage polluted every post's meta cache with 40kB
+  rows; legacy meta migrates automatically on upgrade and serves it as a
   `#wp-headless-prerender` sibling injected before `#root` at
   `wp_headless_document_html@10` — theme fallback shells conventionally
   hook at 20 and skip when the container is present; the frontend removes
