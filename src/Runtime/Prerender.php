@@ -65,13 +65,16 @@ class Prerender implements Module {
 		$table   = self::table();
 		$charset = $wpdb->get_charset_collate();
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta( "CREATE TABLE {$table} (
+		$wpdb->query( "CREATE TABLE IF NOT EXISTS {$table} (
 			post_id BIGINT(20) UNSIGNED NOT NULL,
 			html LONGTEXT NOT NULL,
 			generated DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00',
-			PRIMARY KEY  (post_id)
-		) {$charset};" );
+			PRIMARY KEY (post_id)
+		) {$charset}" ); // phpcs:ignore WordPress.DB
+
+		if ( ! $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) ) {
+			return; // Creation failed — keep retrying on later boots, never migrate.
+		}
 
 		// Migrate the postmeta era, then drop those rows for good.
 		$rows = $wpdb->get_results(
