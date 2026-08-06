@@ -72,6 +72,27 @@ machine-readable content channels — this release makes them first-class.
 - `/favicon.ico` is exempted from frontend interception (core favicon
   behavior instead of an SPA-shell 404).
 
+### Fixed
+- **Soft 404s: WordPress's `is_404()` now decides the response status for
+  every route WordPress can query.** The URL resolver matches route
+  *shape* — a valid permalink structure plus an object that exists — and
+  never asks whether the query behind it returns anything, so
+  `/blog/page/2/` on a one-page blog, and archives whose posts are all
+  drafts, resolved cleanly and served **200** carrying the app's
+  not-found view. A 200 that renders not-found is worse than a real 404:
+  crawlers bank it as thin content instead of dropping the URL.
+  `FrontendBridge` already deferred to WordPress in the opposite
+  direction (resolver says unresolved, WP resolved it fine); this adds
+  the missing mirror. Auth routes (`/login/`, `/profile/`, …) are exempt
+  — WordPress 404s them by definition, so the resolver stays
+  authoritative there. New `FrontendBridge::resolve_is_404()` holds the
+  decision and is unit-tested.
+
+  Note for site owners: this can surface pre-existing routing bugs that
+  the soft 200 was hiding. A taxonomy archive that 404s after upgrading
+  was already broken — check for rewrite-rule collisions between a
+  custom post type's slug and a taxonomy nested under it.
+
 ### Removed
 - `SeoHead::article_jsonld()` (protected) — replaced by `Seo\SchemaGraph`.
   Subclasses overriding it must migrate to the schema piece filters.

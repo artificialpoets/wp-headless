@@ -62,7 +62,7 @@ class FrontendBridge implements Module {
 			$render_url = null;
 		}
 
-		$is_404 = ! empty( $resolved['is_404'] );
+		$is_404 = self::resolve_is_404( $resolved, is_404() );
 
 		// Honour WordPress's canonical redirects before serving: ?p=123 →
 		// pretty permalink, missing/extra trailing slash, and renamed slugs
@@ -92,5 +92,43 @@ class FrontendBridge implements Module {
 		// is null so the payload is built from for_current_request() to match.
 		echo $this->document->render( $render_url ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		exit;
+	}
+
+	/**
+	 * Decide the response status from the resolver's verdict and WordPress's.
+	 *
+	 * The resolver matches route SHAPE — a permalink structure plus an object
+	 * that exists — and never asks whether the query behind it returns
+	 * anything. So it happily resolves `/blog/page/2/` on a two-post blog, or a
+	 * term archive whose every post is a draft, and both used to serve a 200
+	 * carrying the app's "not found" view. A 200 that renders not-found is
+	 * worse than a real 404: crawlers bank it as thin content instead of
+	 * dropping the URL.
+	 *
+	 * WordPress's own main query already ran for this request and knows whether
+	 * there is anything to show, so its verdict wins for every route WordPress
+	 * can actually query.
+	 *
+	 * The exception is the routes the resolver owns outright. Auth pages
+	 * (`/login/`, `/profile/`, …) exist only in the React app, so WordPress
+	 * 404s them by definition — deferring to WP there would 404 every login
+	 * screen. `is_auth` marks them, and for those the resolver stays
+	 * authoritative.
+	 *
+	 * @param array<string, mixed> $resolved  Resolver output for the URL.
+	 * @param bool                 $wp_is_404 WordPress's own main-query verdict.
+	 * @return bool True when the response should carry a 404.
+	 */
+	public static function resolve_is_404( array $resolved, bool $wp_is_404 ): bool {
+		if ( ! empty( $resolved['is_404'] ) ) {
+			return true;
+		}
+
+		// Resolver-owned synthetic routes: WordPress has no concept of them.
+		if ( ! empty( $resolved['is_auth'] ) ) {
+			return false;
+		}
+
+		return $wp_is_404;
 	}
 }
