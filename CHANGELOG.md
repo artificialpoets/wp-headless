@@ -26,7 +26,12 @@ machine-readable content channels — this release makes them first-class.
   `wp_headless_document_html@10` — theme fallback shells conventionally
   hook at 20 and skip when the container is present; the frontend removes
   the container when it commits its own chrome. Invalidates on post
-  save/delete and theme switch; themes/hosts call
+  save/delete and theme switch — reusable-block (`wp_block`) saves and
+  deletes cascade to every published post embedding them through
+  `wp:block {"ref":N}` markers, nested patterns included, since those
+  posts' stored markup renders the block and hydration otherwise masks
+  the staleness from everyone but no-JS visitors and crawlers;
+  themes/hosts call
   `Prerender::invalidate()/flush()` for their own triggers and react via
   the new `wp_headless_prerender_invalidated` action (regeneration
   queues, CDN purges). `wp headless prerender [--post=<id>] [--flush]`

@@ -134,6 +134,11 @@ already present; the frontend removes the container when it commits its
 own chrome. Themes generate the markup (typically their own SSR bundle
 via `wp headless prerender`) — the plugin stores (`Prerender::store()`),
 serves, and invalidates (`Prerender::invalidate()`, `Prerender::flush()`).
+Saving or deleting a post invalidates its own pre-render; saving or
+deleting a reusable block (`wp_block`) also invalidates every published
+post embedding it through `wp:block {"ref":N}` markers, nested patterns
+included — each embedder fires `wp_headless_prerender_invalidated`
+individually, so per-path CDN purges keep working.
 
 | Hook | Type | Signature | Fires |
 |------|------|-----------|-------|

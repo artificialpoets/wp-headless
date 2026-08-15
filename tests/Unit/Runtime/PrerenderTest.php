@@ -187,4 +187,156 @@ class PrerenderTest extends TestCase {
         $html = '<body><div id="root"><p>occupied</p></div></body>';
         $this->assertSame( $html, $this->makeModule()->inject( $html ) );
     }
+
+    // --- reusable-block cascade ---
+
+    /**
+     * wpdb double for the embedder cascade: arg-substituting prepare (the
+     * LIKE needles must reach get_results), needle-routed embedder rows,
+     * and delete capture.
+     *
+     * @param array $embedders_by_needle Map of '"ref":N}' needle → rows
+     *                                   (each array{ID: int, post_type: string}).
+     * @param array $deleted             Receives deleted post IDs in order.
+     */
+    private function mockCascadeWpdb( array $embedders_by_needle, array &$deleted ) {
+        $wpdb         = \Mockery::mock( 'wpdb' );
+        $wpdb->prefix = 'wp_';
+        $wpdb->posts  = 'wp_posts';
+        $wpdb->shouldReceive( 'esc_like' )->andReturnUsing( static function ( $text ) {
+            return $text;
+        } );
+        $wpdb->shouldReceive( 'prepare' )->andReturnUsing( static function ( $query, ...$args ) {
+            foreach ( $args as $arg ) {
+                $pos = strpos( $query, '%s' );
+                if ( false === $pos ) {
+                    break;
+                }
+                $query = substr_replace( $query, (string) $arg, $pos, 2 );
+            }
+            return $query;
+        } );
+        $wpdb->shouldReceive( 'delete' )->andReturnUsing( static function ( $table, $where ) use ( &$deleted ) {
+            $deleted[] = (int) $where['post_id'];
+            return 1;
+        } );
+        $GLOBALS['wpdb'] = $wpdb;
+        return $wpdb;
+    }
+
+    /** Routes get_results by which block's needle the prepared query carries. */
+    private function routeEmbedderQueries( $wpdb, array $embedders_by_needle, int $times ): void {
+        $wpdb->shouldReceive( 'get_results' )->times( $times )->andReturnUsing(
+            static function ( $query ) use ( $embedders_by_needle ) {
+                foreach ( $embedders_by_needle as $needle => $rows ) {
+                    if ( false !== strpos( $query, $needle ) ) {
+                        return array_map( static function ( $row ) {
+                            return (object) $row;
+                        }, $rows );
+                    }
+                }
+                return array();
+            }
+        );
+    }
+
+    private function makePost( string $type, string $status = 'publish' ) {
+        $post              = \Mockery::mock( 'WP_Post' );
+        $post->post_type   = $type;
+        $post->post_status = $status;
+        return $post;
+    }
+
+    public function test_reusable_block_save_invalidates_embedders(): void {
+        Functions\when( 'wp_is_post_revision' )->justReturn( false );
+        Functions\when( 'wp_is_post_autosave' )->justReturn( false );
+        Monkey\Actions\expectDone( 'wp_headless_prerender_invalidated' )->times( 3 );
+
+        $deleted = array();
+        $map     = array(
+            '"ref":9}' => array(
+                array( 'ID' => 21, 'post_type' => 'page' ),
+                array( 'ID' => 22, 'post_type' => 'page' ),
+            ),
+        );
+        $wpdb    = $this->mockCascadeWpdb( $map, $deleted );
+        $this->routeEmbedderQueries( $wpdb, $map, 1 );
+
+        $this->makeModule()->invalidate_on_save( 9, $this->makePost( 'wp_block' ) );
+
+        $this->assertSame( array( 9, 21, 22 ), $deleted );
+    }
+
+    public function test_embedder_walk_recurses_through_nested_blocks_once(): void {
+        Functions\when( 'wp_is_post_revision' )->justReturn( false );
+        Functions\when( 'wp_is_post_autosave' )->justReturn( false );
+
+        // Block 9 is embedded by block 31; block 31 is embedded by page 41
+        // and (cyclically) by block 9 again — the visited set must stop
+        // the loop, and the nested block itself gets no invalidation: it
+        // has no route of its own.
+        $deleted = array();
+        $map     = array(
+            '"ref":9}'  => array( array( 'ID' => 31, 'post_type' => 'wp_block' ) ),
+            '"ref":31}' => array(
+                array( 'ID' => 9, 'post_type' => 'wp_block' ),
+                array( 'ID' => 41, 'post_type' => 'page' ),
+            ),
+        );
+        $wpdb    = $this->mockCascadeWpdb( $map, $deleted );
+        $this->routeEmbedderQueries( $wpdb, $map, 2 );
+
+        $this->makeModule()->invalidate_on_save( 9, $this->makePost( 'wp_block' ) );
+
+        $this->assertSame( array( 9, 41 ), $deleted );
+    }
+
+    public function test_regular_save_skips_embedder_scan(): void {
+        Functions\when( 'wp_is_post_revision' )->justReturn( false );
+        Functions\when( 'wp_is_post_autosave' )->justReturn( false );
+
+        $deleted = array();
+        $wpdb    = $this->mockCascadeWpdb( array(), $deleted );
+        $wpdb->shouldReceive( 'get_results' )->never();
+
+        $this->makeModule()->invalidate_on_save( 7, $this->makePost( 'page' ) );
+
+        $this->assertSame( array( 7 ), $deleted );
+    }
+
+    public function test_revision_save_invalidates_nothing(): void {
+        Functions\when( 'wp_is_post_revision' )->justReturn( true );
+
+        $deleted = array();
+        $wpdb    = $this->mockCascadeWpdb( array(), $deleted );
+        $wpdb->shouldReceive( 'delete' )->never();
+        $wpdb->shouldReceive( 'get_results' )->never();
+
+        $this->makeModule()->invalidate_on_save( 12, $this->makePost( 'wp_block' ) );
+
+        $this->assertSame( array(), $deleted );
+    }
+
+    public function test_reusable_block_delete_cascades_to_embedders(): void {
+        $deleted = array();
+        $map     = array(
+            '"ref":9}' => array( array( 'ID' => 21, 'post_type' => 'page' ) ),
+        );
+        $wpdb    = $this->mockCascadeWpdb( $map, $deleted );
+        $this->routeEmbedderQueries( $wpdb, $map, 1 );
+
+        $this->makeModule()->invalidate_on_delete( 9, $this->makePost( 'wp_block' ) );
+
+        $this->assertSame( array( 9, 21 ), $deleted );
+    }
+
+    public function test_delete_without_post_object_skips_scan(): void {
+        $deleted = array();
+        $wpdb    = $this->mockCascadeWpdb( array(), $deleted );
+        $wpdb->shouldReceive( 'get_results' )->never();
+
+        $this->makeModule()->invalidate_on_delete( 7, null );
+
+        $this->assertSame( array( 7 ), $deleted );
+    }
 }

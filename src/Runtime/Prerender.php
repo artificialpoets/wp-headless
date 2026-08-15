@@ -20,11 +20,13 @@
  * - Serving: `wp_headless_document_html` at priority 10 — before
  *   theme-side fallback shells, which conventionally hook at 20 and
  *   skip when the container is already present.
- * - Invalidation: saving or deleting a post drops its snapshot;
- *   switching themes drops all of them. Themes/hosts add their own
- *   triggers by calling Prerender::invalidate()/flush(), and can react
- *   to any invalidation via the `wp_headless_prerender_invalidated`
- *   action (e.g. queue a regeneration, purge a CDN path).
+ * - Invalidation: saving or deleting a post drops its snapshot — for
+ *   reusable blocks (`wp_block`) also every embedding post's, since
+ *   their stored markup renders the block; switching themes drops all
+ *   of them. Themes/hosts add their own triggers by calling
+ *   Prerender::invalidate()/flush(), and can react to any invalidation
+ *   via the `wp_headless_prerender_invalidated` action (e.g. queue a
+ *   regeneration, purge a CDN path).
  *
  * @package WPHeadless
  */
@@ -111,7 +113,7 @@ class Prerender implements Module {
 		self::install_table();
 		add_filter( 'wp_headless_document_html', array( $this, 'inject' ), 10 );
 		add_action( 'save_post', array( $this, 'invalidate_on_save' ), 10, 2 );
-		add_action( 'deleted_post', array( __CLASS__, 'invalidate' ) );
+		add_action( 'deleted_post', array( $this, 'invalidate_on_delete' ), 10, 2 );
 		add_action( 'switch_theme', array( __CLASS__, 'flush' ) );
 
 		// Self-healing: every invalidation queues a (debounced) cron
@@ -352,6 +354,75 @@ class Prerender implements Module {
 		}
 
 		self::invalidate( (int) $post_id );
+
+		if ( 'wp_block' === $post->post_type ) {
+			self::invalidate_embedders( (int) $post_id );
+		}
+	}
+
+	/**
+	 * Deleting content drops its pre-render; deleting a reusable block
+	 * also drops its embedders' — their stored markup still renders the
+	 * now-gone block.
+	 *
+	 * @param int           $post_id Deleted post ID.
+	 * @param \WP_Post|null $post    Post object.
+	 */
+	public function invalidate_on_delete( $post_id, $post = null ): void {
+		self::invalidate( (int) $post_id );
+
+		if ( $post instanceof \WP_Post && 'wp_block' === $post->post_type ) {
+			self::invalidate_embedders( (int) $post_id );
+		}
+	}
+
+	/**
+	 * Invalidate every post embedding a reusable block.
+	 *
+	 * save_post fires for the wp_block itself, never for the posts that
+	 * render it through `<!-- wp:block {"ref":N} /-->` — without this
+	 * cascade their stored pre-renders keep serving the block's OLD
+	 * markup, invisibly: hydration reads fresh data, so the staleness
+	 * only shows to no-JS visitors and crawlers. Matching is on the
+	 * serialized attribute (`"ref":N` plus its JSON terminator, exactly
+	 * as the editor writes it), published posts only — revisions copy
+	 * the embedding content and would flood the regeneration queue.
+	 * Reusable blocks nest, so embedders that are themselves wp_blocks
+	 * walk on to THEIR embedders; the visited set bounds the walk.
+	 *
+	 * @param int $block_id Saved/deleted wp_block ID.
+	 */
+	private static function invalidate_embedders( int $block_id ): void {
+		global $wpdb;
+
+		$queue   = array( $block_id );
+		$visited = array( $block_id => true );
+
+		while ( $queue ) {
+			$needle    = '"ref":' . (int) array_shift( $queue );
+			$embedders = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT ID, post_type FROM {$wpdb->posts} WHERE post_status = 'publish' AND (post_content LIKE %s OR post_content LIKE %s)",
+					'%' . $wpdb->esc_like( $needle . '}' ) . '%',
+					'%' . $wpdb->esc_like( $needle . ',' ) . '%'
+				)
+			);
+
+			foreach ( (array) $embedders as $embedder ) {
+				$embedder_id = (int) $embedder->ID;
+				if ( isset( $visited[ $embedder_id ] ) ) {
+					continue;
+				}
+				$visited[ $embedder_id ] = true;
+
+				if ( 'wp_block' === $embedder->post_type ) {
+					$queue[] = $embedder_id;
+					continue;
+				}
+
+				self::invalidate( $embedder_id );
+			}
+		}
 	}
 
 	/**
