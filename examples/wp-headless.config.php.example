@@ -60,5 +60,20 @@ return array(
 		),
 	),
 	// Disable any module per site: 'modules' => array( 'llms_txt' => array( 'enabled' => false ) )
-	'modules'   => array(),
+	'modules'   => array(
+		// HTTP cache policy + runtime-payload caching (0.3.0). Shown with
+		// defaults; the whole block is optional.
+		// 'cache' => array(
+		// 	'enabled'                => true,   // false = always nocache (pre-0.3 behavior)
+		// 	'max_age'                => 60,     // browser TTL, clamped to 3600
+		// 	's_maxage'               => 300,    // CDN TTL, clamped to 21600 (nonce tick)
+		// 	'stale_while_revalidate' => 3600,
+		// 	'not_found_s_maxage'     => 60,
+		// 	'payload'                => true,   // cache the static payload subset
+		// 	'payload_ttl'            => 900,
+		// 	// Themes that know their reads can prune the payload — e.g. a
+		// 	// Vite SPA reading only site/rest/frontend/request:
+		// 	// 'payload_keys' => array( 'site', 'rest', 'frontend' ),
+		// ),
+	),
 );

@@ -21,9 +21,10 @@ Two shapes are explicitly frozen:
 | `wp_headless_booted` | action | `Plugin $plugin` | Once, after every enabled module registered. |
 
 Built-in module keys: `rewrite_rules`, `nav_menus`, `block_annotator`,
-`asset_proxy`, `frontend_bridge`, `seo_head`, `content_fields`, `comments`,
-`menu_endpoint`, `runtime_endpoint`, `resolve_endpoint`, `cors`,
-`head_cleanup`, `llms_txt`, `robots_txt`, `settings_page`.
+`asset_proxy`, `frontend_bridge`, `cache`, `prerender`, `seo_head`,
+`content_fields`, `comments`, `menu_endpoint`, `runtime_endpoint`,
+`resolve_endpoint`, `cors`, `head_cleanup`, `llms_txt`, `robots_txt`,
+`settings_page`.
 
 Any module can be disabled per site via config — no code required:
 
@@ -153,3 +154,26 @@ the renderer — disable when a host worker consumes the invalidated
 action instead), `modules.prerender.node_bin` (absolute Node binary for
 web-context cron runs; auto-detected from common install paths
 otherwise).
+
+## Caching
+
+| Hook | Type | Signature | Fires |
+|------|------|-----------|-------|
+| `wp_headless_cache_headers` | filter | `array\|null $headers, array $context, Config $config → array\|null` | While serving the document shell (`template_redirect@0`), after the body is rendered. `null` means undecided — the bridge falls back to `nocache_headers()` (the pre-0.3 behavior, and the behavior when the `cache` module is disabled); an empty `array()` emits nothing (defer to headers already sent during render); a map is emitted verbatim. `$context` carries `is_404`. Hosts adjust or replace the policy here. |
+| `wp_headless_runtime_cache_invalidated` | action | `string $reason` | After the cached runtime payload is invalidated (menu/Customizer/site-identity/plugin changes). The payload is embedded in every served document — hosts hook this to purge their CDN/edge caches of the shell. |
+
+Config: `modules.cache.enabled` (default `true`), `modules.cache.max_age`
+(default `60`, clamped to 3600), `modules.cache.s_maxage` (default `300`,
+clamped to 21600 — half the 12-hour REST-nonce tick: a public copy must never
+outlive its embedded nonce's validity), `modules.cache.stale_while_revalidate`
+(default `3600`), `modules.cache.not_found_s_maxage` (default `60`),
+`modules.cache.payload` (default `true` — cache the static payload subset),
+`modules.cache.payload_ttl` (default `900`), `modules.cache.payload_keys`
+(default `[]` = full payload; a non-empty list prunes `menus`, `urls`,
+`postTypes`, `discussion`, `customCss`, `theme` down to those listed —
+`site`, `rest`, `frontend`, `user`, `request` always survive. The bundled
+starter themes read the full payload; prune only when your theme knows its
+reads). The policy automatically stands down to `private, no-store` for
+logged-in users, WP identity cookies, and sites where a plugin makes
+anonymous nonces per-visitor by filtering `nonce_user_logged_out`
+(e.g. WooCommerce).

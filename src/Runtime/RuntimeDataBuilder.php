@@ -33,50 +33,151 @@ class RuntimeDataBuilder {
 	 * @return array<string, mixed>
 	 */
 	public function build( ?string $resolved_url = null ): array {
-		$site_icon_id   = absint( get_option( 'site_icon' ) );
-		$custom_logo_id = absint( get_theme_mod( 'custom_logo' ) );
-		$home_url       = home_url( '/' );
+		$home_url = home_url( '/' );
+		$data     = $this->static_payload();
+
+		// ── Per-request overlay: never cached. ──
+		$data['site']['admin_email'] = is_user_logged_in() && current_user_can( 'manage_options' ) ? (string) get_bloginfo( 'admin_email' ) : null;
+		$data['rest']['nonce']       = wp_create_nonce( 'wp_rest' );
+		if ( isset( $data['urls'] ) ) {
+			// wp_logout_url() embeds a per-user nonce — easy to miss inside an
+			// otherwise-static block.
+			$data['urls']['logout'] = (string) wp_logout_url( $home_url );
+		}
+		$data['user'] = $this->current_user_data();
+
+		if ( isset( $data['theme'] ) ) {
+			// The cached value is PRE-filter; the documented
+			// wp_headless_theme_data filter re-fires on every request so
+			// per-request contributions keep working on a cached payload.
+			$data['theme'] = apply_filters( 'wp_headless_theme_data', $data['theme'] );
+		}
+
+		$data['request'] = null !== $resolved_url ? $this->request_data->for_url( $resolved_url ) : $this->request_data->for_current_request();
+
+		// Public API: fires per request on the full array.
+		return apply_filters( 'wp_headless_runtime_data', $data, $this->config, $resolved_url );
+	}
+
+	/**
+	 * The static subset, via the cross-request cache when enabled.
+	 *
+	 * @return array<string, mixed>
+	 */
+	protected function static_payload(): array {
+		if ( ! $this->payload_cache_enabled() ) {
+			return $this->build_static_payload();
+		}
+		$ttl = absint( $this->config->get( 'modules.cache.payload_ttl', 900 ) );
+		return RuntimeCache::remember( RuntimeCache::key(), $ttl, array( $this, 'build_static_payload' ) );
+	}
+
+	/**
+	 * Both toggles must be on: the cache module registers the invalidation
+	 * hooks, so caching the payload without it would never invalidate.
+	 */
+	protected function payload_cache_enabled(): bool {
+		return false !== $this->config->get( 'modules.cache.enabled', true )
+			&& false !== $this->config->get( 'modules.cache.payload', true );
+	}
+
+	/**
+	 * The cacheable subset of the payload — site state only, pre-filter,
+	 * with the per-visitor slots left neutral (admin_email/logout empty,
+	 * nonce '') for the overlay in build() to fill.
+	 *
+	 * Public visibility so RuntimeCache::remember() can call it as the
+	 * miss-builder callable.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function build_static_payload(): array {
+		$keys     = $this->payload_allowlist();
+		$home_url = home_url( '/' );
 
 		$data = array(
-			'site'      => array(
-				'name'         => get_bloginfo( 'name' ),
-				'description'  => get_bloginfo( 'description' ),
-				'url'          => $home_url,
-				'language'     => get_locale(),
-				'charset'      => get_bloginfo( 'charset' ),
-				'textDirection' => is_rtl() ? 'rtl' : 'ltr',
-				'timezone'     => wp_timezone_string(),
-				'favicon'      => $site_icon_id ? $this->image_data( $site_icon_id ) : null,
-				'logo'         => $custom_logo_id ? $this->image_data( $custom_logo_id ) : null,
-				'header_image' => $this->header_image(),
-				'background'   => $this->background_data(),
-				'admin_email'  => is_user_logged_in() && current_user_can( 'manage_options' ) ? (string) get_bloginfo( 'admin_email' ) : null,
-			),
-			'rest'      => array(
+			'site'     => array(),
+			'rest'     => array(
 				'root'      => rest_url(),
 				'wpV2'      => rest_url( 'wp/v2/' ),
 				'headless'  => rest_url( $this->config->namespace() . '/' ),
 				'namespace' => $this->config->namespace(),
-				'nonce'     => wp_create_nonce( 'wp_rest' ),
+				'nonce'     => '',
 			),
-			'frontend'  => array(
+			'frontend' => array(
 				'assetBaseUrl'    => $this->config->asset_base_url(),
 				'assetMount'      => '/' . $this->config->asset_mount(),
 				'hasFrontendBuild' => $this->theme_manager->has_build() || $this->config->frontend_available(),
 			),
-			'menus'     => array(
-				'locations' => $this->menu_locations(),
-			),
-			'urls'      => $this->auth_urls( $home_url ),
-			'user'      => $this->current_user_data(),
-			'postTypes' => $this->post_types_data(),
-			'discussion' => $this->discussion_settings(),
-			'customCss' => $this->custom_css(),
-			'theme'     => $this->theme_data(),
-			'request'   => null !== $resolved_url ? $this->request_data->for_url( $resolved_url ) : $this->request_data->for_current_request(),
 		);
 
-		return apply_filters( 'wp_headless_runtime_data', $data, $this->config, $resolved_url );
+		$site_icon_id   = absint( get_option( 'site_icon' ) );
+		$custom_logo_id = absint( get_theme_mod( 'custom_logo' ) );
+		$data['site']   = array(
+			'name'          => get_bloginfo( 'name' ),
+			'description'   => get_bloginfo( 'description' ),
+			'url'           => $home_url,
+			'language'      => get_locale(),
+			'charset'       => get_bloginfo( 'charset' ),
+			'textDirection' => is_rtl() ? 'rtl' : 'ltr',
+			'timezone'      => wp_timezone_string(),
+			'favicon'       => $site_icon_id ? $this->image_data( $site_icon_id ) : null,
+			'logo'          => $custom_logo_id ? $this->image_data( $custom_logo_id ) : null,
+			'header_image'  => $this->header_image(),
+			'background'    => $this->background_data(),
+			'admin_email'   => null,
+		);
+
+		// The allowlist is applied BEFORE the heavy builders run: a pruned
+		// `theme` never walks the block registries at all — the pruning is
+		// the compute win, not just a smaller blob.
+		if ( $this->payload_key_wanted( 'menus', $keys ) ) {
+			$data['menus'] = array( 'locations' => $this->menu_locations() );
+		}
+		if ( $this->payload_key_wanted( 'urls', $keys ) ) {
+			$urls           = $this->auth_urls( $home_url );
+			$urls['logout'] = '';
+			$data['urls']   = $urls;
+		}
+		if ( $this->payload_key_wanted( 'postTypes', $keys ) ) {
+			$data['postTypes'] = $this->post_types_data();
+		}
+		if ( $this->payload_key_wanted( 'discussion', $keys ) ) {
+			$data['discussion'] = $this->discussion_settings();
+		}
+		if ( $this->payload_key_wanted( 'customCss', $keys ) ) {
+			$data['customCss'] = $this->custom_css();
+		}
+		if ( $this->payload_key_wanted( 'theme', $keys ) ) {
+			$data['theme'] = $this->theme_data();
+		}
+
+		return $data;
+	}
+
+	/**
+	 * The normalized modules.cache.payload_keys allowlist ([] = full payload).
+	 *
+	 * @return array<int, string>
+	 */
+	protected function payload_allowlist(): array {
+		$keys = $this->config->get( 'modules.cache.payload_keys', array() );
+		if ( ! is_array( $keys ) ) {
+			return array();
+		}
+		return array_values( array_filter( array_map( 'strval', $keys ) ) );
+	}
+
+	/**
+	 * Whether a prunable top-level key should be built. `site`, `rest`,
+	 * `frontend` (and the per-request `user`/`request`) are always kept —
+	 * the app cannot boot without them.
+	 *
+	 * @param string            $key  Payload key.
+	 * @param array<int,string> $keys Allowlist ([] keeps everything).
+	 */
+	protected function payload_key_wanted( string $key, array $keys ): bool {
+		return empty( $keys ) || in_array( $key, $keys, true );
 	}
 
 	/**
@@ -283,13 +384,13 @@ class RuntimeDataBuilder {
 	 * @return array<string, mixed>
 	 */
 	private function theme_data(): array {
-		return apply_filters(
-			'wp_headless_theme_data',
-			array(
-				'styles'           => $this->theme_json_styles(),
-				'blockStyles'      => $this->block_style_variations(),
-				'blockStylesheets' => $this->block_stylesheet_urls(),
-			)
+		// Raw value — the wp_headless_theme_data filter is applied per
+		// request in build(), on top of the (possibly cached) raw array, so
+		// caching never freezes third-party filter output.
+		return array(
+			'styles'           => $this->theme_json_styles(),
+			'blockStyles'      => $this->block_style_variations(),
+			'blockStylesheets' => $this->block_stylesheet_urls(),
 		);
 	}
 

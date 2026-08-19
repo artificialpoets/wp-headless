@@ -91,7 +91,7 @@ Most headless WordPress setups assume a separate frontend host. WP Headless keep
 
 = Can I use it with Yoast SEO / WP Rocket / WooCommerce / [plugin X]? =
 
-The plugin doesn't touch the admin or the REST API namespaces those plugins extend. SEO meta is injected by the theme itself via the `useHead` hook (or your own). Caching plugins work because the served HTML is a static `index.html` plus a runtime payload — both cacheable.
+The plugin doesn't touch the admin or the REST API namespaces those plugins extend. SEO meta is injected by the theme itself via the `useHead` hook (or your own). Caching works out of the box since 0.3.0: anonymous pages are served with `public` Cache-Control (`s-maxage` + `stale-while-revalidate`) and a strong ETag, so CDNs, reverse proxies, and page-cache plugins can store them; logged-in visitors, WP identity cookies, and plugins that make anonymous nonces per-visitor (WooCommerce) automatically get `private, no-store` instead.
 
 WooCommerce is not specifically supported in the starter themes — the React app would need additional templates for the shop, cart, and checkout. The plugin's REST and resolver layers don't get in WooCommerce's way.
 
@@ -113,7 +113,7 @@ Activate any non-headless theme via Appearance → Themes. The plugin will stand
 
 = Is the data in `window.WP_HEADLESS` cached? =
 
-It's rebuilt on every request because it includes a fresh REST nonce, the resolved current request, and the logged-in user. Stripping the dynamic bits and caching the static portion is on the roadmap.
+Yes, since 0.3.0. The static portion (site identity, menus, post types, discussion settings, theme styles…) is cached with automatic invalidation on menu/Customizer/theme/plugin changes; the dynamic bits — the REST nonce, the resolved current request, and the logged-in user — are rebuilt on every request and overlaid on top. Themes that know exactly which payload keys they read can additionally prune the rest via `modules.cache.payload_keys` (the bundled starter themes need the full payload).
 
 == Screenshots ==
 
@@ -123,6 +123,16 @@ It's rebuilt on every request because it includes a fresh REST nonce, the resolv
 4. The login page rendered by the theme
 
 == Changelog ==
+
+= 0.3.0 — 2026-08-18 =
+
+HTTP caching release: headless pages become cacheable end to end.
+
+* Cache-policy module (`modules.cache.*`) — anonymous pages get `public, max-age, s-maxage, stale-while-revalidate` + `Vary: Cookie`; logged-in users, WP identity cookies, and per-visitor-nonce plugins (WooCommerce) stand down to `private, no-store`. TTLs are clamped below the REST-nonce rotation window.
+* Conditional requests — a strong ETag on the document shell and ETag + Last-Modified on proxied assets, with real 304 responses.
+* Runtime payload caching — the static subset is cached with automatic invalidation (menus, Customizer, theme/plugin changes, watched options); nonce/user/request stay per-request. New `wp_headless_runtime_cache_invalidated` action for host/CDN purges.
+* Payload slimming — `modules.cache.payload_keys` lets a theme that knows its reads prune unused payload keys before their builders even run.
+* New `wp_headless_cache_headers` filter — hosts adjust or replace the whole policy.
 
 = 0.2.0 — 2026-08-18 =
 
@@ -152,6 +162,10 @@ First public release.
 * Translation template (`languages/wp-headless.pot`).
 
 == Upgrade Notice ==
+
+= 0.3.0 =
+
+Anonymous pages are now served with public cache headers and ETags so CDNs and page caches can store them; identity-carrying requests stay private automatically. Set `modules.cache.enabled = false` to restore the old always-nocache behavior.
 
 = 0.2.0 =
 

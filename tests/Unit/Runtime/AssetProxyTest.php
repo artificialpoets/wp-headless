@@ -25,6 +25,10 @@ class ExposedAssetProxy extends AssetProxy {
     public function exposeResolveFilePath( string $relative_path ): string {
         return $this->resolve_file_path( $relative_path );
     }
+
+    public function exposeAssetEtag( string $filename, int $mtime, int $size ): string {
+        return $this->asset_etag( $filename, $mtime, $size );
+    }
 }
 
 class AssetProxyTest extends TestCase {
@@ -279,5 +283,32 @@ class AssetProxyTest extends TestCase {
         } finally {
             $this->rmrf( $base );
         }
+    }
+
+    // --- Asset ETags (conditional requests) ---
+
+    public function test_hashed_filename_etag_is_stable_across_mtime_and_size(): void
+    {
+        $proxy = $this->makeProxy();
+        $a = $proxy->exposeAssetEtag( 'index.C19sr62o.js', 1000, 100 );
+        $b = $proxy->exposeAssetEtag( 'index.C19sr62o.js', 2000, 200 );
+        $this->assertSame( $a, $b );
+        $this->assertMatchesRegularExpression( '/^"[a-f0-9]{32}"$/', $a );
+    }
+
+    public function test_non_hashed_filename_etag_changes_with_mtime(): void
+    {
+        $proxy = $this->makeProxy();
+        $a = $proxy->exposeAssetEtag( 'app.renderer.js', 1000, 100 );
+        $b = $proxy->exposeAssetEtag( 'app.renderer.js', 2000, 100 );
+        $this->assertNotSame( $a, $b );
+    }
+
+    public function test_non_hashed_filename_etag_changes_with_size(): void
+    {
+        $proxy = $this->makeProxy();
+        $a = $proxy->exposeAssetEtag( 'app.renderer.js', 1000, 100 );
+        $b = $proxy->exposeAssetEtag( 'app.renderer.js', 1000, 200 );
+        $this->assertNotSame( $a, $b );
     }
 }

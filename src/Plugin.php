@@ -15,6 +15,7 @@ use WPHeadless\Api\ResolveEndpoint;
 use WPHeadless\Api\RuntimeEndpoint;
 use WPHeadless\Config\Config;
 use WPHeadless\Contracts\Module;
+use WPHeadless\Http\CachePolicy;
 use WPHeadless\Http\Cors;
 use WPHeadless\Routing\RewriteRules;
 use WPHeadless\Runtime\AssetProxy;
@@ -69,6 +70,7 @@ class Plugin {
 			'block_annotator'  => new BlockAnnotator(),
 			'asset_proxy'      => new AssetProxy( $this->config, $this->theme_manager ),
 			'frontend_bridge'  => new FrontendBridge( $this->config, $this->theme_manager ),
+			'cache'            => new CachePolicy( $this->config ),
 			'prerender'        => new Prerender( $this->config ),
 			'seo_head'         => new SeoHead( $this->config, $this->theme_manager ),
 			'content_fields'   => new ContentFields( $this->config ),
