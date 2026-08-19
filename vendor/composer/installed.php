@@ -1,8 +1,8 @@
 <?php return array(
     'root' => array(
         'name' => 'artificialpoets/wp-headless',
-        'pretty_version' => '0.2.0',
-        'version' => '0.2.0.0',
+        'pretty_version' => '0.3.0',
+        'version' => '0.3.0.0',
         'reference' => null,
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
@@ -11,8 +11,8 @@
     ),
     'versions' => array(
         'artificialpoets/wp-headless' => array(
-            'pretty_version' => '0.2.0',
-            'version' => '0.2.0.0',
+            'pretty_version' => '0.3.0',
+            'version' => '0.3.0.0',
             'reference' => null,
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
