@@ -9,6 +9,7 @@ namespace WPHeadless\Runtime;
 
 use WPHeadless\Config\Config;
 use WPHeadless\Contracts\Module;
+use WPHeadless\Http\ConditionalRequest;
 use WPHeadless\Theme\ThemeManager;
 
 class FrontendBridge implements Module {
@@ -80,18 +81,70 @@ class FrontendBridge implements Module {
 			redirect_canonical();
 		}
 
-		status_header( $is_404 ? 404 : 200 );
-		header( 'Content-Type: text/html; charset=' . get_bloginfo( 'charset' ) );
-		nocache_headers();
+		// RENDER FIRST, emit status/headers after. HtmlDocument::render() fires
+		// wp_head()/wp_footer() inside output buffers; rendering into a variable
+		// means third-party callbacks that call header() land BEFORE our
+		// emission — the cache policy can then inspect headers_list() and stand
+		// down, and the body is available to hash for the ETag. (The resolved
+		// URL is passed through so the runtime payload uses for_url(); when we
+		// fell back to WP's real query above, $render_url is null so the
+		// payload is built from for_current_request() to match.)
+		$html = $this->document->render( $render_url );
 
-		// Pass the resolved URL through so HtmlDocument's runtime payload uses
-		// for_url() rather than for_current_request() — that's what makes
-		// `/profile/`, `/books/`, auth routes and the like recognised as
-		// their proper `kind` in `window.WP_HEADLESS.request` from the very
-		// first render. When we fell back to WP's real query above, $render_url
-		// is null so the payload is built from for_current_request() to match.
-		echo $this->document->render( $render_url ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		// The body embeds the REST nonce, so this ETag rotates with the nonce
+		// tick automatically — a 304 can only ever re-affirm a cached body
+		// whose nonce is still the currently-served one.
+		$etag         = '"' . md5( $html ) . '"';
+		$not_modified = ! $is_404
+			&& ConditionalRequest::matches_etag( $etag, ConditionalRequest::if_none_match() );
+
+		if ( ! headers_sent() ) { // a render-time flush() forfeits header control; degrade gracefully.
+			status_header( $not_modified ? 304 : ( $is_404 ? 404 : 200 ) );
+			if ( ! $not_modified ) {
+				header( 'Content-Type: text/html; charset=' . get_bloginfo( 'charset' ) );
+			}
+			// A 304 re-sends the cache directives (RFC 7232 §4.1).
+			$this->send_cache_headers( $is_404 );
+			if ( ! $is_404 ) {
+				header( 'ETag: ' . $etag );
+			}
+		}
+
+		if ( $not_modified ) {
+			exit; // no body on 304.
+		}
+
+		echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		exit;
+	}
+
+	/**
+	 * Emit the response's cache policy via the `wp_headless_cache_headers`
+	 * filter. `null` (nobody decided — e.g. the cache module is disabled)
+	 * falls back to core's nocache_headers(), the pre-0.3 behavior; an empty
+	 * array emits nothing (defer to headers already sent during render); a
+	 * map is emitted verbatim.
+	 *
+	 * @param bool $is_404 Whether the response is a 404.
+	 */
+	private function send_cache_headers( bool $is_404 ): void {
+		/**
+		 * Filters the cache headers for the served document shell.
+		 *
+		 * @param array<string,string>|null $headers null = undecided (nocache
+		 *                                           fallback), array() = emit
+		 *                                           nothing, map = emit these.
+		 * @param array<string,mixed>       $context { is_404: bool }.
+		 * @param Config                    $config  Plugin configuration.
+		 */
+		$headers = apply_filters( 'wp_headless_cache_headers', null, array( 'is_404' => $is_404 ), $this->config );
+		if ( ! is_array( $headers ) ) {
+			nocache_headers();
+			return;
+		}
+		foreach ( $headers as $name => $value ) {
+			header( $name . ': ' . $value );
+		}
 	}
 
 	/**
