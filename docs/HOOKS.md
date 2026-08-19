@@ -177,3 +177,11 @@ reads). The policy automatically stands down to `private, no-store` for
 logged-in users, WP identity cookies, and sites where a plugin makes
 anonymous nonces per-visitor by filtering `nonce_user_logged_out`
 (e.g. WooCommerce).
+
+REST reads (0.4.0): `modules.cache.rest` (default `true`) applies the same
+policy to anonymous GETs on allowlisted REST routes via `rest_post_dispatch` —
+default allowlist is the plugin's own `/runtime`, `/resolve`, `/menus`;
+extend with `modules.cache.rest_routes` (exact-match route paths; per-user,
+by-id, and templated routes are structurally refused). Tunables:
+`modules.cache.rest_max_age` (`0`), `modules.cache.rest_s_maxage` (`300`),
+`modules.cache.rest_stale_while_revalidate` (`600`).

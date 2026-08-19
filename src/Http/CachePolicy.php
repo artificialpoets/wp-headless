@@ -60,6 +60,7 @@ class CachePolicy implements Module {
 	 */
 	public function register(): void {
 		add_filter( 'wp_headless_cache_headers', array( $this, 'filter_headers' ), 10, 2 );
+		add_filter( 'rest_post_dispatch', array( $this, 'filter_rest_response' ), 20, 3 );
 		RuntimeCache::register_invalidation_hooks();
 	}
 
@@ -162,5 +163,100 @@ class CachePolicy implements Module {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Emit cache headers on anonymous REST GET reads for allowlisted routes,
+	 * so CDNs/proxies can cache the API calls a headless frontend makes on
+	 * client-side navigation. Same stand-downs as the document policy.
+	 *
+	 * @param mixed            $response Result to send (WP_REST_Response).
+	 * @param mixed            $server   REST server instance.
+	 * @param mixed            $request  The request (WP_REST_Request).
+	 * @return mixed
+	 */
+	public function filter_rest_response( $response, $server, $request ) {
+		unset( $server );
+		if ( ! is_object( $response ) || ! method_exists( $response, 'header' ) ) {
+			return $response;
+		}
+		if ( ! is_object( $request ) || ! method_exists( $request, 'get_method' ) || 'GET' !== $request->get_method() ) {
+			return $response;
+		}
+		if ( method_exists( $response, 'get_status' ) && 200 !== (int) $response->get_status() ) {
+			return $response;
+		}
+		$headers = $this->rest_cache_headers(
+			(string) $request->get_route(),
+			is_user_logged_in(),
+			$this->has_wp_cookies( array_keys( (array) $_COOKIE ) ),
+			(bool) has_filter( 'nonce_user_logged_out' )
+		);
+		if ( null === $headers ) {
+			return $response;
+		}
+		foreach ( $headers as $name => $value ) {
+			$response->header( $name, $value );
+		}
+		return $response;
+	}
+
+	/**
+	 * The pure REST decision seam. Null = leave the response untouched
+	 * (route not allowlisted, or the feature is off).
+	 *
+	 * @param string $route                The REST route (no query string).
+	 * @param bool   $is_logged_in         Whether a user is logged in.
+	 * @param bool   $has_cookies          Whether WP identity cookies are present.
+	 * @param bool   $nonce_is_per_visitor Whether anonymous nonces are per-visitor.
+	 * @return array<string,string>|null
+	 */
+	protected function rest_cache_headers( string $route, bool $is_logged_in, bool $has_cookies, bool $nonce_is_per_visitor ): ?array {
+		if ( false === $this->config->get( 'modules.cache.rest', true ) ) {
+			return null;
+		}
+		if ( ! $this->rest_route_cacheable( $route ) ) {
+			return null;
+		}
+		if ( $is_logged_in || $has_cookies || $nonce_is_per_visitor ) {
+			return $this->private_headers();
+		}
+		$max_age  = min( absint( $this->config->get( 'modules.cache.rest_max_age', 0 ) ), self::MAX_AGE_CEILING );
+		$s_maxage = min( absint( $this->config->get( 'modules.cache.rest_s_maxage', 300 ) ), self::S_MAXAGE_CEILING );
+		$swr      = absint( $this->config->get( 'modules.cache.rest_stale_while_revalidate', 600 ) );
+		return array(
+			'Cache-Control' => sprintf( 'public, max-age=%d, s-maxage=%d, stale-while-revalidate=%d', $max_age, $s_maxage, $swr ),
+			'Vary'          => 'Cookie, Origin',
+		);
+	}
+
+	/**
+	 * Exact-match allowlist with a structural safety net: never per-user or
+	 * by-id routes, never route templates — even when operator-added.
+	 *
+	 * @param string $route The REST route.
+	 */
+	protected function rest_route_cacheable( string $route ): bool {
+		$default = array(
+			'/' . untrailingslashit( (string) $this->config->get( 'namespace', 'wp-headless/v1' ) ) . '/runtime',
+			'/' . untrailingslashit( (string) $this->config->get( 'namespace', 'wp-headless/v1' ) ) . '/resolve',
+			'/' . untrailingslashit( (string) $this->config->get( 'namespace', 'wp-headless/v1' ) ) . '/menus',
+		);
+		$extra = $this->config->get( 'modules.cache.rest_routes', array() );
+		if ( is_array( $extra ) ) {
+			foreach ( $extra as $r ) {
+				if ( is_string( $r ) && '' !== $r && '/' === $r[0] ) {
+					$default[] = untrailingslashit( $r );
+				}
+			}
+		}
+		if ( ! in_array( untrailingslashit( $route ), $default, true ) ) {
+			return false;
+		}
+		// Structural denials mirror the safety bar of host-side REST caches.
+		if ( preg_match( '#/(users|settings|me)(/|$)#i', $route ) || preg_match( '#/\d+(/|$)#', $route ) || false !== strpos( $route, '(?P' ) ) {
+			return false;
+		}
+		return true;
 	}
 }

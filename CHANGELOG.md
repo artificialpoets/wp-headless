@@ -60,6 +60,24 @@ and caches (and optionally slims) the payload's static subset.
   `wp_headless_runtime_data` filter continues to fire per request on the
   full payload, unchanged.
 
+## [Unreleased] — 0.4.0
+
+REST reads become edge-cacheable: the API calls a headless frontend makes on
+client-side navigation get the same cache-policy treatment the document shell
+got in 0.3.0.
+
+### Added
+- **REST cache headers**: anonymous GET responses on allowlisted routes carry
+  `public, max-age, s-maxage, stale-while-revalidate` + `Vary: Cookie, Origin`
+  via `rest_post_dispatch`; logged-in/cookie/per-visitor-nonce requests get
+  `private, no-store`. Default allowlist is the plugin's own read endpoints
+  (`/runtime`, `/resolve`, `/menus`); sites extend it with
+  `modules.cache.rest_routes` (exact match, with structural denials for
+  per-user/by-id/templated routes even when operator-added). Tunables:
+  `modules.cache.rest` (default `true`), `rest_max_age` (`0`),
+  `rest_s_maxage` (`300`, clamped to the nonce window),
+  `rest_stale_while_revalidate` (`600`).
+
 ## [0.2.0] — 2026-08-18
 
 SEO/AEO engine + open module system. For a headless site the served body is
