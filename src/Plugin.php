@@ -15,6 +15,7 @@ use WPHeadless\Api\ResolveEndpoint;
 use WPHeadless\Api\RuntimeEndpoint;
 use WPHeadless\Config\Config;
 use WPHeadless\Contracts\Module;
+use WPHeadless\Export\DataExport;
 use WPHeadless\Http\CachePolicy;
 use WPHeadless\Http\Cors;
 use WPHeadless\Routing\RewriteRules;
@@ -72,6 +73,7 @@ class Plugin {
 			'frontend_bridge'  => new FrontendBridge( $this->config, $this->theme_manager ),
 			'cache'            => new CachePolicy( $this->config ),
 			'prerender'        => new Prerender( $this->config ),
+			'data_export'      => new DataExport( $this->config ),
 			'seo_head'         => new SeoHead( $this->config, $this->theme_manager ),
 			'content_fields'   => new ContentFields( $this->config ),
 			'comments'         => new Comments(),
