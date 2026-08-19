@@ -10,6 +10,7 @@ namespace WPHeadless\Runtime;
 use WP;
 use WPHeadless\Config\Config;
 use WPHeadless\Contracts\Module;
+use WPHeadless\Http\ConditionalRequest;
 use WPHeadless\Routing\RewriteRules;
 use WPHeadless\Theme\ThemeManager;
 
@@ -44,14 +45,45 @@ class AssetProxy implements Module {
 		}
 
 		$mime_type = $this->detect_mime_type( $file_path );
+		$filename  = basename( $file_path );
+		$mtime     = (int) filemtime( $file_path );
+		$size      = (int) filesize( $file_path );
+		$etag      = $this->asset_etag( $filename, $mtime, $size );
+		$cache     = $this->cache_control_header( $filename );
+
+		if ( ConditionalRequest::not_modified( $etag, $mtime ) ) {
+			status_header( 304 );
+			header( 'Cache-Control: ' . $cache );
+			header( 'ETag: ' . $etag );
+			exit;
+		}
 
 		status_header( 200 );
 		header( 'Content-Type: ' . $mime_type );
-		header( 'Content-Length: ' . (string) filesize( $file_path ) );
-		header( 'Cache-Control: ' . $this->cache_control_header( basename( $file_path ) ) );
+		header( 'Content-Length: ' . (string) $size );
+		header( 'Cache-Control: ' . $cache );
+		header( 'ETag: ' . $etag );
+		header( 'Last-Modified: ' . gmdate( 'D, d M Y H:i:s', $mtime ) . ' GMT' );
 
 		readfile( $file_path );
 		exit;
+	}
+
+	/**
+	 * Strong validator for an asset. Content-hashed filenames already identify
+	 * their bytes, so the name alone is a free validator that never touches
+	 * the filesystem twice; everything else falls back to mtime+size, which
+	 * changes whenever the file is redeployed.
+	 *
+	 * @param string $filename Base filename.
+	 * @param int    $mtime    File modification time (Unix).
+	 * @param int    $size     File size in bytes.
+	 */
+	protected function asset_etag( string $filename, int $mtime, int $size ): string {
+		if ( $this->looks_content_hashed( $filename ) ) {
+			return '"' . md5( $filename ) . '"';
+		}
+		return '"' . md5( $filename . '|' . $mtime . '|' . $size ) . '"';
 	}
 
 	protected function resolve_file_path( string $relative_path ): string {
