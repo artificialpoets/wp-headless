@@ -5,6 +5,61 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 0.3.0
+
+HTTP caching, end to end. Headless pages were unconditionally uncacheable —
+every response carried `nocache_headers()` and the 8–200 KB runtime payload
+was rebuilt from scratch per request. This release makes anonymous responses
+publicly cacheable with correct standdowns, adds real conditional requests,
+and caches (and optionally slims) the payload's static subset.
+
+### Added
+- **Cache-policy module** (`Http\CachePolicy`, key `cache`): anonymous
+  cookie-free GET/HEAD responses get `public, max-age, s-maxage,
+  stale-while-revalidate` + `Vary: Cookie`; logged-in users, WP identity
+  cookies (`wordpress_*`, `wp-postpass_*`, `wp-settings-*`,
+  `comment_author_*`), and per-visitor anonymous nonces (a plugin filtering
+  `nonce_user_logged_out`, e.g. WooCommerce) stand the policy down to
+  `private, no-store`; 404s are `public, max-age=0` with a short `s-maxage`.
+  TTLs are clamped below the 12-hour REST-nonce tick — a public copy must
+  never outlive its embedded nonce. Config under `modules.cache.*`; the new
+  `wp_headless_cache_headers` filter lets hosts adjust or replace the policy.
+- **Conditional requests**: the document shell carries a strong body-hash
+  `ETag` (it rotates with the nonce tick automatically) and answers matching
+  `If-None-Match` with a bodyless 304; the asset proxy adds `ETag` (the
+  filename itself for content-hashed files) + `Last-Modified` + 304s, so the
+  hourly re-downloads of the non-hashed tier become empty revalidations.
+  New shared helpers in `Http\ConditionalRequest` (RFC 7232 semantics).
+- **Runtime payload caching** (`Runtime\RuntimeCache`): the static subset —
+  site identity, REST roots, frontend flags, menus, auth URLs, post types,
+  discussion settings, custom CSS, theme styles — is cached in a transient
+  (riding the persistent object cache when one exists) with a
+  generation-counter key; invalidated by nav-menu changes, `theme_mods`,
+  Customizer saves, theme switches, plugin (de)activation/upgrades,
+  custom-css saves, and a watched-options allowlist. Each invalidation fires
+  the documented **`wp_headless_runtime_cache_invalidated`** action so hosts
+  can purge edge caches of the shell. The nonce, current user, logout URL,
+  admin email, and resolved request are rebuilt per request and overlaid.
+- **Payload slimming**: `modules.cache.payload_keys` ([] = full payload)
+  prunes `menus`/`urls`/`postTypes`/`discussion`/`customCss`/`theme` down to
+  the listed keys *before their builders run* — a pruned `theme` never walks
+  the block registries at all. `site`/`rest`/`frontend`/`user`/`request`
+  always survive. The bundled starter themes read the full payload; pruning
+  is for custom themes that know their reads.
+
+### Changed
+- **The document shell renders before status/headers are emitted.**
+  Third-party `wp_head`/`wp_footer` callbacks that call `header()` now run
+  first; the plugin's resolved status wins, and the cache policy stands down
+  (emits nothing) when render-time code already sent `Cache-Control` or
+  `Set-Cookie`. With the `cache` module disabled the emitted headers are
+  byte-identical to 0.2.0's `nocache_headers()`.
+- **`wp_headless_theme_data` now receives the raw (possibly cached) theme
+  array and re-fires on every request**; its output is no longer part of the
+  cached blob, so third-party filter output is never frozen. The
+  `wp_headless_runtime_data` filter continues to fire per request on the
+  full payload, unchanged.
+
 ## [0.2.0] — 2026-08-18
 
 SEO/AEO engine + open module system. For a headless site the served body is

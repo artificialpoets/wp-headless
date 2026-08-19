@@ -133,6 +133,8 @@ All hooks use the `wp_headless_*` prefix. **The complete, canonical reference
 | `wp_headless_modules` | filter | `array<string, Module>, Config, ThemeManager` | `array` | Once on `after_setup_theme@100` — the add-on/module registration point |
 | `wp_headless_should_serve_frontend` | filter | `bool, Config` | `bool` | Every public request, before interception |
 | `wp_headless_runtime_data` | filter | `array, Config, ?string $url` | `array` | After the runtime payload is built |
+| `wp_headless_cache_headers` | filter | `array\|null, array $context, Config` | `array\|null` | While serving the shell — decide/adjust the Cache-Control policy |
+| `wp_headless_runtime_cache_invalidated` | action | `string $reason` | — | After the cached payload invalidates — hosts purge CDNs here |
 | `wp_headless_seo_meta` | filter | `array $meta` | `array` | Before SEO head output (shape frozen — see docs/HOOKS.md) |
 | `wp_headless_schema_pieces` | filter | `array $pieces, array $context` | `array` | Per request — add/remove schema.org graph nodes |
 | `wp_headless_document_html` | filter | `string, array $runtime, Config` | `string` | After all HTML rewrites/injections |
