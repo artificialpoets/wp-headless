@@ -26,6 +26,7 @@ class RequestDataBuilder {
 		return array(
 			'url'                  => $this->current_url(),
 			'path'                 => $this->current_path(),
+			'kind'                 => $this->current_kind(),
 			'is_front_page'        => is_front_page(),
 			'is_home'              => is_home(),
 			'is_singular'          => is_singular(),
@@ -50,6 +51,49 @@ class RequestDataBuilder {
 			'post'                 => $post ? $this->summarize_post( $post ) : null,
 			'queried_object_id'    => get_queried_object_id(),
 		);
+	}
+
+	/**
+	 * Derive a `kind` string from WordPress's current main-query conditionals,
+	 * mirroring the vocabulary for_url() emits so the two request shapes match.
+	 * Used when falling back to WP's real routing for URLs the URL resolver
+	 * can't classify by hand.
+	 */
+	protected function current_kind(): string {
+		if ( is_404() ) {
+			return 'unresolved';
+		}
+		if ( is_front_page() ) {
+			return 'front_page';
+		}
+		if ( is_search() ) {
+			return 'search';
+		}
+		if ( is_attachment() ) {
+			return 'attachment';
+		}
+		if ( is_singular() ) {
+			return (string) ( get_post_type() ?: 'post' );
+		}
+		if ( is_post_type_archive() ) {
+			return 'post_type_archive';
+		}
+		if ( is_author() ) {
+			return 'author_archive';
+		}
+		if ( is_date() ) {
+			return 'date_archive';
+		}
+		if ( is_category() || is_tag() || is_tax() ) {
+			return 'term_archive';
+		}
+		if ( is_home() ) {
+			return 'home';
+		}
+		if ( is_archive() ) {
+			return 'archive';
+		}
+		return 'home';
 	}
 
 	/**
@@ -84,6 +128,57 @@ class RequestDataBuilder {
 	 * @return array<string, mixed>
 	 */
 	public function for_url( string $url ): array {
+		$response = $this->build_url_response( $url );
+
+		// Populate robots from the resolved shape. base_template() seeds it null
+		// and current_robots() reads the global wp_robots filter, which reflects
+		// the *current* main query — wrong when resolving an arbitrary URL (e.g.
+		// the /resolve endpoint). Deriving it from the resolved flags is correct
+		// for both the served shell and cross-URL resolution.
+		if ( null === ( $response['robots'] ?? null ) ) {
+			$response['robots'] = $this->robots_for_response( $response );
+		}
+
+		/**
+		 * Filter the resolved request shape for a URL.
+		 *
+		 * Lets ecosystem plugins (WooCommerce, multilingual, custom rewrites)
+		 * teach the resolver about routes it doesn't reimplement by hand —
+		 * especially useful for the /resolve endpoint's client-side navigation,
+		 * where there is no WordPress main query to fall back to.
+		 *
+		 * @param array<string,mixed> $response The resolved request shape.
+		 * @param string              $url      The URL being resolved.
+		 */
+		return (array) apply_filters( 'wp_headless_resolve_url', $response, $url );
+	}
+
+	/**
+	 * Compute a robots directive string from a resolved response shape.
+	 *
+	 * Mirrors WordPress core: non-public sites block everything, search results
+	 * and 404s are noindex, and indexable pages carry the default
+	 * max-image-preview directive.
+	 *
+	 * @param array<string, mixed> $response
+	 */
+	protected function robots_for_response( array $response ): ?string {
+		if ( ! (int) get_option( 'blog_public', 1 ) ) {
+			return 'noindex, nofollow';
+		}
+		if ( ! empty( $response['is_search'] ) || ! empty( $response['is_404'] ) ) {
+			return 'noindex, follow';
+		}
+		return 'max-image-preview:large';
+	}
+
+	/**
+	 * Resolve a URL to its request shape (without robots — see for_url()).
+	 *
+	 * @param string $url URL or path.
+	 * @return array<string, mixed>
+	 */
+	protected function build_url_response( string $url ): array {
 		$url        = $this->normalize_url( $url );
 		$path       = (string) wp_parse_url( $url, PHP_URL_PATH );
 		$normalized = $this->normalize_path( $path );

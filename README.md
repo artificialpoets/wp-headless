@@ -123,13 +123,18 @@ Returns a menu with a recursive `items` tree, each item carrying `children`.
 
 ## Extensibility hooks
 
-All hooks use the `wp_headless_*` prefix.
+All hooks use the `wp_headless_*` prefix. **The complete, canonical reference
+— every filter and action, signatures, shapes, and semver policy — lives in
+[docs/HOOKS.md](docs/HOOKS.md).** The most-used ones:
 
 | Hook | Type | Parameters | Return | When |
 |------|------|------------|--------|------|
 | `wp_headless_config` | filter | `array $config` | `array` | After config sources are merged |
+| `wp_headless_modules` | filter | `array<string, Module>, Config, ThemeManager` | `array` | Once on `after_setup_theme@100` — the add-on/module registration point |
 | `wp_headless_should_serve_frontend` | filter | `bool, Config` | `bool` | Every public request, before interception |
 | `wp_headless_runtime_data` | filter | `array, Config, ?string $url` | `array` | After the runtime payload is built |
+| `wp_headless_seo_meta` | filter | `array $meta` | `array` | Before SEO head output (shape frozen — see docs/HOOKS.md) |
+| `wp_headless_schema_pieces` | filter | `array $pieces, array $context` | `array` | Per request — add/remove schema.org graph nodes |
 | `wp_headless_document_html` | filter | `string, array $runtime, Config` | `string` | After all HTML rewrites/injections |
 | `wp_headless_rest_post_types` | filter | `array, Config` | `array` | When REST fields are registered |
 | `wp_headless_rest_fields` | filter | `array, array $types, Config` | `array` | Before each REST field is registered |

@@ -28,4 +28,37 @@ return array(
 			'page',
 		),
 	),
+	'seo'       => array(
+		// Last-resort social image (og:image/twitter:image) when a page has
+		// no featured image, custom logo, or site icon.
+		'default_image' => '',
+		'schema'        => array(
+			'enabled'            => true,
+			'article_post_types' => array( 'post' ),
+			'search_action'      => true,
+			'organization'       => array(
+				'name'    => '',            // defaults to the site name
+				'logo'    => '',            // URL; defaults to custom logo → site icon
+				'same_as' => array(),       // social profile URLs
+			),
+		),
+		'llms'          => array(
+			'enabled'     => true,
+			'full'        => false,         // also serve /llms-full.txt (full text content)
+			'post_types'  => array(),       // empty = auto-discover public REST types
+			'max_items'   => 100,
+			'description' => '',            // optional paragraph under the site title
+		),
+		'robots_txt'    => array(
+			'enabled'      => true,
+			'ai_policy'    => 'allow',      // 'allow' | 'block' (AI crawlers only)
+			'block_agents' => array(),      // overrides the built-in agent list
+			'extra'        => '',           // raw extra robots.txt lines
+		),
+		'head_cleanup'  => array(
+			'enabled' => true,              // per-tag keys: see docs/HOOKS.md
+		),
+	),
+	// Disable any module per site: 'modules' => array( 'llms_txt' => array( 'enabled' => false ) )
+	'modules'   => array(),
 );

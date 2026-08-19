@@ -29,12 +29,19 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    # Skip when the CI-bot's own version-bump commit comes back through.
-    # Skip when the human author tagged the commit with [skip release].
+  # Gate: run the full CI suite (PHPUnit matrix + both theme builds) first.
+  # A red suite blocks the release job below, so untested code never gets
+  # tagged, zipped, published, or auto-installed onto live sites. Skipped on
+  # the bot's own version-bump commit and on any [skip release] commit — when
+  # this job is skipped, the release job (needs: ci) is skipped with it.
+  ci:
     if: >-
       !contains(github.event.head_commit.message, '[skip release]')
       && github.event.head_commit.author.email != '41898282+github-actions[bot]@users.noreply.github.com'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history so we can tag)

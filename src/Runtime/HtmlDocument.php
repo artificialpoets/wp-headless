@@ -34,7 +34,19 @@ class HtmlDocument {
 		$html = $this->rewrite_asset_urls( $html );
 
 		if ( $this->config->get( 'frontend.inject_wp_head', true ) ) {
-			$html = $this->inject_before_closing_tag( $html, '</head>', $this->capture_wp_head() );
+			$head = $this->capture_wp_head();
+
+			// The build shell ships a static placeholder <title> (e.g. the theme
+			// name). wp_head() emits the real per-URL <title> via the title-tag
+			// theme support; per the HTML spec only the FIRST <title> counts, so
+			// we must drop the placeholder or crawlers and social unfurlers index
+			// the static one. Strip it only when the captured head supplies its
+			// own, so themes without title-tag support keep their static title.
+			if ( false !== stripos( $head, '<title' ) ) {
+				$html = $this->strip_first_title( $html );
+			}
+
+			$html = $this->inject_before_closing_tag( $html, '</head>', $head );
 		}
 
 		$runtime_json   = wp_json_encode( $runtime_data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
@@ -119,6 +131,16 @@ class HtmlDocument {
 		}
 
 		return 1 === preg_match( '/\.(?:css|js|mjs|json|map|ico|png|jpe?g|gif|svg|webp|avif|woff2?|ttf|otf|eot|txt|webmanifest)$/i', $url );
+	}
+
+	/**
+	 * Remove the first <title>…</title> from the document shell.
+	 *
+	 * Used to drop the build's static placeholder title so the per-URL title
+	 * injected by wp_head() is the document's authoritative (first) title.
+	 */
+	protected function strip_first_title( string $html ): string {
+		return (string) preg_replace( '#<title\b[^>]*>.*?</title>#is', '', $html, 1 );
 	}
 
 	protected function inject_before_closing_tag( string $html, string $closing_tag, string $content ): string {

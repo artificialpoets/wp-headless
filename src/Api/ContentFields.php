@@ -42,7 +42,14 @@ class ContentFields implements Module {
 	 * @return void
 	 */
 	public function register_fields(): void {
-		$post_types = (array) apply_filters( 'wp_headless_rest_post_types', $this->config->get( 'rest.post_types', array( 'post', 'page' ) ), $this->config );
+		// Default to every public, REST-enabled post type so custom post types
+		// get the same enrichment (featured_image, author_info, adjacent,
+		// permalink…) as core post/page — matching the "CPTs are automatically
+		// recognised" promise. An empty rest.post_types config (the default)
+		// means auto-discover; set an explicit list to restrict enrichment.
+		$configured = (array) $this->config->get( 'rest.post_types', array() );
+		$resolved   = empty( $configured ) ? $this->discoverable_post_types() : $configured;
+		$post_types = (array) apply_filters( 'wp_headless_rest_post_types', $resolved, $this->config );
 		$post_types = array_values(
 			array_filter(
 				$post_types,
@@ -112,6 +119,27 @@ class ContentFields implements Module {
 		foreach ( $fields as $name => $args ) {
 			register_rest_field( $post_types, $name, $args );
 		}
+	}
+
+	/**
+	 * Public, REST-exposed post types eligible for enrichment.
+	 *
+	 * Excludes attachments — they're media, not editorial content, and don't
+	 * benefit from author_info / adjacent / comment_count.
+	 *
+	 * @return array<int, string>
+	 */
+	protected function discoverable_post_types(): array {
+		$types = get_post_types(
+			array(
+				'public'       => true,
+				'show_in_rest' => true,
+			),
+			'names'
+		);
+		unset( $types['attachment'] );
+
+		return array_values( $types );
 	}
 
 	/**
@@ -221,11 +249,9 @@ class ContentFields implements Module {
 			);
 		}
 
-		$previous = get_previous_post( false, '', 'category' );
-		$next     = get_next_post( false, '', 'category' );
-
-		// get_previous_post() reads the global $post; ensure it's set.
-		$original = $GLOBALS['post'] ?? null;
+		// get_previous_post() / get_next_post() read the global $post — ensure
+		// it's set to the requested post (REST has no main-query context).
+		$original        = $GLOBALS['post'] ?? null;
 		$GLOBALS['post'] = $post;
 		setup_postdata( $post );
 		$previous = get_previous_post();

@@ -63,7 +63,26 @@ function wp_headless_plugin() {
 	return $plugin;
 }
 
-wp_headless_plugin()->register();
+/*
+ * Boot on after_setup_theme (priority 100) rather than at include time so
+ * that every plugin AND the active theme — regardless of load order — can
+ * hook `wp_headless_modules` and `wp_headless_config` before the module
+ * map and config are locked in. Theme functions.php is included just
+ * before after_setup_theme fires, and themes conventionally finish their
+ * own setup (including hooked include loaders) by priority 10 — priority
+ * 100 hears them all; plugins_loaded would be too early for any of them.
+ * All built-in modules attach hooks that fire later (init, parse_request,
+ * template_redirect, wp_head, rest_api_init, admin_menu) — NavMenus
+ * handles the one after_setup_theme dependency itself — so deferral does
+ * not change behavior.
+ */
+add_action(
+	'after_setup_theme',
+	static function () {
+		wp_headless_plugin()->register();
+	},
+	100
+);
 
 register_activation_hook(
 	WP_HEADLESS_FILE,

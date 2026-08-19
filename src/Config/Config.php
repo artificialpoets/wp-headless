@@ -184,8 +184,64 @@ class Config {
 				'max_age'           => 86400,
 			),
 			'rest'         => array(
-				'post_types' => array( 'post', 'page' ),
+				// Empty = auto-discover every public, REST-enabled post type
+				// (see ContentFields). Set an explicit list to restrict enrichment.
+				'post_types' => array(),
 			),
+			'seo'          => array(
+				// Last-resort social image when a page has no featured image,
+				// custom logo, or site icon.
+				'default_image' => '',
+				'schema'        => array(
+					'enabled'            => true,
+					'article_post_types' => array( 'post' ),
+					'search_action'      => true,
+					'organization'       => array(
+						'name'    => '',
+						'logo'    => '',
+						'same_as' => array(),
+					),
+				),
+				'llms'          => array(
+					'enabled'     => true,
+					// llms-full.txt (full post content) is opt-in.
+					'full'        => false,
+					// Empty = auto-discover, same semantics as rest.post_types.
+					'post_types'  => array(),
+					'max_items'   => 100,
+					'description' => '',
+				),
+				'robots_txt'    => array(
+					'enabled'      => true,
+					// 'allow' appends nothing restrictive (plus an llms.txt
+					// pointer); 'block' emits Disallow stanzas for AI crawlers.
+					'ai_policy'    => 'allow',
+					// Overrides the built-in AI agent list when non-empty.
+					'block_agents' => array(),
+					// Raw extra robots.txt lines appended verbatim.
+					'extra'        => '',
+				),
+				'head_cleanup'  => array(
+					'enabled'           => true,
+					'rsd'               => true,
+					'wlw'               => true,
+					'generator'         => true,
+					'shortlink'         => true,
+					'adjacent_posts'    => true,
+					'emoji'             => true,
+					'oembed_host_js'    => true,
+					// Kept by default: the plugin deliberately serves is_embed().
+					'oembed_discovery'  => false,
+					// Kept by default: RSS surface stays intact.
+					'feed_links_extra'  => false,
+					// Kept by default: REST discovery is a headless feature.
+					'rest_link'         => false,
+				),
+			),
+			// Per-module boot toggles: modules.{key}.enabled => false disables
+			// a module (keys match Plugin's module map). Unknown keys are
+			// preserved for add-on modules.
+			'modules'      => array(),
 		);
 	}
 
@@ -285,7 +341,54 @@ class Config {
 			$config['rest'] = array();
 		}
 
-		$config['rest']['post_types'] = $this->normalize_string_list( $config['rest']['post_types'] ?? array( 'post', 'page' ) );
+		$config['rest']['post_types'] = $this->normalize_string_list( $config['rest']['post_types'] ?? array() );
+
+		if ( ! isset( $config['seo'] ) || ! is_array( $config['seo'] ) ) {
+			$config['seo'] = array();
+		}
+
+		$config['seo']['default_image'] = (string) ( $config['seo']['default_image'] ?? '' );
+
+		$schema                                    = is_array( $config['seo']['schema'] ?? null ) ? $config['seo']['schema'] : array();
+		$schema['enabled']                         = ! empty( $schema['enabled'] );
+		$schema['article_post_types']              = $this->normalize_string_list( $schema['article_post_types'] ?? array() );
+		$schema['search_action']                   = ! empty( $schema['search_action'] );
+		$organization                              = is_array( $schema['organization'] ?? null ) ? $schema['organization'] : array();
+		$schema['organization']                    = array(
+			'name'    => (string) ( $organization['name'] ?? '' ),
+			'logo'    => (string) ( $organization['logo'] ?? '' ),
+			'same_as' => $this->normalize_string_list( $organization['same_as'] ?? array() ),
+		);
+		$config['seo']['schema']                   = $schema;
+
+		$llms                          = is_array( $config['seo']['llms'] ?? null ) ? $config['seo']['llms'] : array();
+		$llms['enabled']               = ! empty( $llms['enabled'] );
+		$llms['full']                  = ! empty( $llms['full'] );
+		$llms['post_types']            = $this->normalize_string_list( $llms['post_types'] ?? array() );
+		$llms['max_items']             = absint( $llms['max_items'] ?? 100 );
+		$llms['description']           = (string) ( $llms['description'] ?? '' );
+		$config['seo']['llms']         = $llms;
+
+		$robots                        = is_array( $config['seo']['robots_txt'] ?? null ) ? $config['seo']['robots_txt'] : array();
+		$robots['enabled']             = ! empty( $robots['enabled'] );
+		$robots['ai_policy']           = in_array( $robots['ai_policy'] ?? 'allow', array( 'allow', 'block' ), true )
+			? $robots['ai_policy']
+			: 'allow';
+		$robots['block_agents']        = $this->normalize_string_list( $robots['block_agents'] ?? array() );
+		$robots['extra']               = (string) ( $robots['extra'] ?? '' );
+		$config['seo']['robots_txt']   = $robots;
+
+		$cleanup                       = is_array( $config['seo']['head_cleanup'] ?? null ) ? $config['seo']['head_cleanup'] : array();
+		foreach ( array( 'enabled', 'rsd', 'wlw', 'generator', 'shortlink', 'adjacent_posts', 'emoji', 'oembed_host_js', 'oembed_discovery', 'feed_links_extra', 'rest_link' ) as $cleanup_key ) {
+			$cleanup[ $cleanup_key ] = ! empty( $cleanup[ $cleanup_key ] );
+		}
+		$config['seo']['head_cleanup'] = $cleanup;
+
+		// Module toggles pass through untouched: unknown keys belong to
+		// add-on modules and must survive normalization.
+		if ( ! isset( $config['modules'] ) || ! is_array( $config['modules'] ) ) {
+			$config['modules'] = array();
+		}
 
 		return $config;
 	}
