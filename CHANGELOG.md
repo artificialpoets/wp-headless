@@ -5,7 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — data export
+## [Unreleased]
+
+### Fixed
+- **Front-page artifact lands at `/`.** `get_permalink()` for the
+  `page_on_front` page reports the page's own slug path (`/home/`), so the
+  site's most-navigated route exported to a key no route-by-path consumer
+  ever requests. Exports and retractions now swap in `home_url('/')` when
+  the post is the statically-assigned front page, putting the artifact at
+  the documented `/` key.
+
+## [0.4.0] — 2026-08-19 — data export
 
 The data half of "documents ship from the edge": a path-keyed JSON artifact
 per route, built at publish time and handed to hosts for static serving —

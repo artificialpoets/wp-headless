@@ -48,6 +48,8 @@ final class DataExportTest extends TestCase {
 			}
 		);
 		Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
+		// No front page assigned unless a test says otherwise.
+		Functions\when( 'get_option' )->justReturn( null );
 		Functions\when( 'wp_json_encode' )->alias(
 			static function ( $value, $flags = 0 ) {
 				return json_encode( $value, $flags );
@@ -166,6 +168,95 @@ final class DataExportTest extends TestCase {
 			'ID'          => 42,
 			'post_type'   => 'page',
 			'post_name'   => 'about-us',
+			'post_status' => 'publish',
+		);
+		$this->exporter()->on_transition( 'publish', 'draft', $post );
+	}
+
+	public function test_front_page_post_exports_to_root(): void {
+		Functions\when( 'get_post_type_object' )->justReturn( $this->restType() );
+		Functions\when( 'get_permalink' )->justReturn( 'https://ex.test/home/' );
+		Functions\when( 'home_url' )->justReturn( 'https://ex.test/' );
+		Functions\when( 'get_option' )->alias(
+			static function ( $key ) {
+				$options = array(
+					'show_on_front' => 'page',
+					'page_on_front' => 42,
+				);
+				return isset( $options[ $key ] ) ? $options[ $key ] : null;
+			}
+		);
+
+		Actions\expectDone( 'wp_headless_data_exported' )
+			->once()
+			->whenHappen(
+				function ( $path, $json, $context ) {
+					$this->assertSame( '/', $path );
+					$this->assertSame( 42, $context['post_id'] );
+				}
+			);
+
+		$post = (object) array(
+			'ID'          => 42,
+			'post_type'   => 'page',
+			'post_name'   => 'home',
+			'post_status' => 'publish',
+		);
+		$this->exporter()->on_transition( 'publish', 'draft', $post );
+	}
+
+	public function test_front_page_unpublish_retracts_root(): void {
+		Functions\when( 'get_post_type_object' )->justReturn( $this->restType() );
+		Functions\when( 'get_permalink' )->justReturn( 'https://ex.test/home/' );
+		Functions\when( 'home_url' )->justReturn( 'https://ex.test/' );
+		Functions\when( 'get_option' )->alias(
+			static function ( $key ) {
+				$options = array(
+					'show_on_front' => 'page',
+					'page_on_front' => 42,
+				);
+				return isset( $options[ $key ] ) ? $options[ $key ] : null;
+			}
+		);
+
+		Actions\expectDone( 'wp_headless_data_deleted' )
+			->once()
+			->whenHappen(
+				function ( $path, $context ) {
+					$this->assertSame( '/', $path );
+					$this->assertSame( 42, $context['post_id'] );
+				}
+			);
+
+		$post = (object) array(
+			'ID'        => 42,
+			'post_type' => 'page',
+			'post_name' => 'home',
+		);
+		$this->exporter()->on_transition( 'draft', 'publish', $post );
+	}
+
+	public function test_front_page_setting_off_keeps_the_slug_path(): void {
+		Functions\when( 'get_post_type_object' )->justReturn( $this->restType() );
+		Functions\when( 'get_permalink' )->justReturn( 'https://ex.test/home/' );
+		Functions\when( 'get_option' )->alias(
+			static function ( $key ) {
+				return 'show_on_front' === $key ? 'posts' : 42;
+			}
+		);
+
+		Actions\expectDone( 'wp_headless_data_exported' )
+			->once()
+			->whenHappen(
+				function ( $path, $json, $context ) {
+					$this->assertSame( '/home', $path );
+				}
+			);
+
+		$post = (object) array(
+			'ID'          => 42,
+			'post_type'   => 'page',
+			'post_name'   => 'home',
 			'post_status' => 'publish',
 		);
 		$this->exporter()->on_transition( 'publish', 'draft', $post );

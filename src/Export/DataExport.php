@@ -111,6 +111,9 @@ class DataExport implements Module {
 		if ( ! is_string( $permalink ) || '' === $permalink ) {
 			return;
 		}
+		if ( $this->is_front_page( $post ) ) {
+			$permalink = home_url( '/' );
+		}
 		$path = $this->export_path_for( $permalink );
 		if ( null === $path ) {
 			return;
@@ -157,7 +160,10 @@ class DataExport implements Module {
 			return;
 		}
 		$permalink = get_permalink( $post->ID );
-		$path      = is_string( $permalink ) && '' !== $permalink ? $this->export_path_for( $permalink ) : null;
+		if ( is_string( $permalink ) && '' !== $permalink && $this->is_front_page( $post ) ) {
+			$permalink = home_url( '/' );
+		}
+		$path = is_string( $permalink ) && '' !== $permalink ? $this->export_path_for( $permalink ) : null;
 		if ( null === $path ) {
 			return;
 		}
@@ -212,6 +218,20 @@ class DataExport implements Module {
 			}
 		}
 		\WP_CLI::success( 'Exported ' . $count . ' route artifact(s).' );
+	}
+
+	/**
+	 * Whether this post is the statically-assigned front page. Its public
+	 * canonical URL is the site root, but get_permalink() reports the
+	 * page's own slug path — callers must swap in home_url('/') so the
+	 * artifact lands at '/' where route-by-path consumers look for it.
+	 *
+	 * @param object $post WP_Post-shaped object.
+	 */
+	protected function is_front_page( $post ): bool {
+		return 'page' === (string) $post->post_type
+			&& 'page' === get_option( 'show_on_front' )
+			&& (int) get_option( 'page_on_front' ) === (int) $post->ID;
 	}
 
 	/**
