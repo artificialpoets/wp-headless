@@ -100,5 +100,40 @@ case "$SITEMAP_CT" in
 	*) fail "wp-sitemap.xml serves XML (got $SITEMAP_CT)" ;;
 esac
 
+# ── HTTP cache policy + conditional requests (0.3.0) ─────────────────────────
+
+FRONT_H="$(curl -sI "$BASE/")"
+assert_contains "anon front is public"        "$FRONT_H" "public"
+assert_contains "anon front has s-maxage"     "$FRONT_H" "s-maxage="
+assert_contains "anon front varies on Cookie" "$FRONT_H" "Vary: Cookie"
+assert_contains "anon front has ETag"         "$FRONT_H" "ETag:"
+
+ETAG="$(printf '%s' "$FRONT_H" | grep -i '^etag:' | awk '{print $2}' | tr -d '\r')"
+if [ -n "$ETAG" ]; then
+	INM="$(curl -s -o /dev/null -w '%{http_code}' -H "If-None-Match: $ETAG" "$BASE/")"
+	if [ "$INM" = "304" ]; then ok "If-None-Match revalidates to 304"; else fail "If-None-Match revalidates to 304 (got $INM)"; fi
+fi
+
+# Cookie NAME presence alone must force private — no real session needed.
+AUTH_H="$(curl -sI -H "Cookie: wordpress_logged_in_x=1" "$BASE/")"
+assert_contains     "cookie-carrying request is private" "$AUTH_H" "private"
+assert_not_contains "cookie-carrying has no s-maxage"    "$AUTH_H" "s-maxage"
+
+NF_H="$(curl -sI "$BASE/definitely-not-a-page-$(date +%s)/")"
+assert_contains "404 has max-age=0" "$NF_H" "max-age=0"
+
+# Asset conditional: pull a hashed asset URL out of the served shell.
+ASSET="$(curl -s "$BASE/" | grep -oE '(/_wp-headless/assets/|/dist/assets/)[^"]*\.js' | head -1)"
+if [ -n "$ASSET" ]; then
+	A_H="$(curl -sI "$BASE$ASSET")"
+	assert_contains "asset has ETag"          "$A_H" "ETag:"
+	assert_contains "asset has Last-Modified" "$A_H" "Last-Modified:"
+	A_ETAG="$(printf '%s' "$A_H" | grep -i '^etag:' | awk '{print $2}' | tr -d '\r')"
+	if [ -n "$A_ETAG" ]; then
+		A_INM="$(curl -s -o /dev/null -w '%{http_code}' -H "If-None-Match: $A_ETAG" "$BASE$ASSET")"
+		if [ "$A_INM" = "304" ]; then ok "asset INM revalidates to 304"; else fail "asset INM revalidates to 304 (got $A_INM)"; fi
+	fi
+fi
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
