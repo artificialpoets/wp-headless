@@ -9,6 +9,7 @@ namespace WPHeadless\Http;
 
 use WPHeadless\Config\Config;
 use WPHeadless\Contracts\Module;
+use WPHeadless\Runtime\RuntimeCache;
 
 /**
  * Decides the Cache-Control policy for headless shell responses.
@@ -53,10 +54,13 @@ class CachePolicy implements Module {
 	}
 
 	/**
-	 * Hook registrations only.
+	 * Hook registrations only. The cache module also owns the runtime-payload
+	 * cache's invalidation triggers — caching without them would never
+	 * invalidate, so both live behind the same `modules.cache.enabled` gate.
 	 */
 	public function register(): void {
 		add_filter( 'wp_headless_cache_headers', array( $this, 'filter_headers' ), 10, 2 );
+		RuntimeCache::register_invalidation_hooks();
 	}
 
 	/**
