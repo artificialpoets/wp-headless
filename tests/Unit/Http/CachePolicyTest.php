@@ -19,6 +19,14 @@ class ExposedCachePolicy extends CachePolicy {
 	public function exposeHasWpCookies( array $names ): bool {
 		return $this->has_wp_cookies( $names );
 	}
+
+	public function exposeRestCacheHeaders( string $route, bool $li, bool $ck, bool $pv ): ?array {
+		return $this->rest_cache_headers( $route, $li, $ck, $pv );
+	}
+
+	public function exposeRestRouteCacheable( string $route ): bool {
+		return $this->rest_route_cacheable( $route );
+	}
 }
 
 final class CachePolicyTest extends TestCase {
@@ -133,5 +141,54 @@ final class CachePolicyTest extends TestCase {
 		$policy = $this->policy();
 		$this->assertFalse( $policy->exposeHasWpCookies( array( '_ga', 'phpsessid', 'cf_clearance' ) ) );
 		$this->assertFalse( $policy->exposeHasWpCookies( array() ) );
+	}
+
+	// --- REST cache headers ---
+
+	public function test_own_namespace_reads_get_public_rest_policy(): void {
+		$headers = $this->policy()->exposeRestCacheHeaders( '/wp-headless/v1/runtime', false, false, false );
+		$this->assertSame( 'public, max-age=0, s-maxage=300, stale-while-revalidate=600', $headers['Cache-Control'] );
+		$this->assertSame( 'Cookie, Origin', $headers['Vary'] );
+	}
+
+	public function test_unlisted_route_is_left_untouched(): void {
+		$this->assertNull( $this->policy()->exposeRestCacheHeaders( '/wp/v2/pages', false, false, false ) );
+	}
+
+	public function test_operator_added_route_is_cacheable(): void {
+		$policy = $this->policy( array( 'modules.cache.rest_routes' => array( '/wp/v2/pages' ) ) );
+		$headers = $policy->exposeRestCacheHeaders( '/wp/v2/pages', false, false, false );
+		$this->assertNotNull( $headers );
+		$this->assertStringContainsString( 's-maxage=300', $headers['Cache-Control'] );
+	}
+
+	public function test_logged_in_rest_read_is_private(): void {
+		$headers = $this->policy()->exposeRestCacheHeaders( '/wp-headless/v1/resolve', true, false, false );
+		$this->assertSame( 'private, no-store, max-age=0', $headers['Cache-Control'] );
+	}
+
+	public function test_rest_feature_toggle_disables(): void {
+		$policy = $this->policy( array( 'modules.cache.rest' => false ) );
+		$this->assertNull( $policy->exposeRestCacheHeaders( '/wp-headless/v1/runtime', false, false, false ) );
+	}
+
+	public function test_structural_denials_hold_even_when_operator_added(): void {
+		$policy = $this->policy(
+			array( 'modules.cache.rest_routes' => array( '/wp/v2/users', '/wp/v2/pages/42', '/wp/v2/me' ) )
+		);
+		$this->assertFalse( $policy->exposeRestRouteCacheable( '/wp/v2/users' ) );
+		$this->assertFalse( $policy->exposeRestRouteCacheable( '/wp/v2/pages/42' ) );
+		$this->assertFalse( $policy->exposeRestRouteCacheable( '/wp/v2/me' ) );
+	}
+
+	public function test_rest_ttls_are_clamped(): void {
+		$policy = $this->policy(
+			array(
+				'modules.cache.rest_s_maxage' => 999999,
+				'modules.cache.rest_max_age'  => 999999,
+			)
+		);
+		$headers = $policy->exposeRestCacheHeaders( '/wp-headless/v1/menus', false, false, false );
+		$this->assertStringContainsString( 'max-age=3600, s-maxage=21600', $headers['Cache-Control'] );
 	}
 }
