@@ -5,7 +5,41 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 0.3.0
+## [Unreleased] — data export
+
+The data half of "documents ship from the edge": a path-keyed JSON artifact
+per route, built at publish time and handed to hosts for static serving —
+client-side navigation stops touching WordPress entirely once a host serves
+the artifacts from its edge.
+
+### Added
+- **Data-export module** (`Export\DataExport`, key `data_export`): publish
+  transitions build `{version, generated, path, request, content}` per route
+  — `content` via an internal `wp/v2` REST dispatch (shape-identical to the
+  live API, rest fields and filters included) — and fire the new
+  **`wp_headless_data_exported`** / **`wp_headless_data_deleted`** actions
+  for host storage writers. `wp headless export` backfills a site. Config:
+  `modules.data_export.{enabled, post_types}`.
+
+## [0.3.1] — 2026-08-19
+
+REST reads become edge-cacheable: the API calls a headless frontend makes on
+client-side navigation get the same cache-policy treatment the document shell
+got in 0.3.0.
+
+### Added
+- **REST cache headers**: anonymous GET responses on allowlisted routes carry
+  `public, max-age, s-maxage, stale-while-revalidate` + `Vary: Cookie, Origin`
+  via `rest_post_dispatch`; logged-in/cookie/per-visitor-nonce requests get
+  `private, no-store`. Default allowlist is the plugin's own read endpoints
+  (`/runtime`, `/resolve`, `/menus`); sites extend it with
+  `modules.cache.rest_routes` (exact match, with structural denials for
+  per-user/by-id/templated routes even when operator-added). Tunables:
+  `modules.cache.rest` (default `true`), `rest_max_age` (`0`),
+  `rest_s_maxage` (`300`, clamped to the nonce window),
+  `rest_stale_while_revalidate` (`600`).
+
+## [0.3.0] — 2026-08-18
 
 HTTP caching, end to end. Headless pages were unconditionally uncacheable —
 every response carried `nocache_headers()` and the 8–200 KB runtime payload
@@ -59,24 +93,6 @@ and caches (and optionally slims) the payload's static subset.
   cached blob, so third-party filter output is never frozen. The
   `wp_headless_runtime_data` filter continues to fire per request on the
   full payload, unchanged.
-
-## [Unreleased] — 0.4.0
-
-REST reads become edge-cacheable: the API calls a headless frontend makes on
-client-side navigation get the same cache-policy treatment the document shell
-got in 0.3.0.
-
-### Added
-- **REST cache headers**: anonymous GET responses on allowlisted routes carry
-  `public, max-age, s-maxage, stale-while-revalidate` + `Vary: Cookie, Origin`
-  via `rest_post_dispatch`; logged-in/cookie/per-visitor-nonce requests get
-  `private, no-store`. Default allowlist is the plugin's own read endpoints
-  (`/runtime`, `/resolve`, `/menus`); sites extend it with
-  `modules.cache.rest_routes` (exact match, with structural denials for
-  per-user/by-id/templated routes even when operator-added). Tunables:
-  `modules.cache.rest` (default `true`), `rest_max_age` (`0`),
-  `rest_s_maxage` (`300`, clamped to the nonce window),
-  `rest_stale_while_revalidate` (`600`).
 
 ## [0.2.0] — 2026-08-18
 

@@ -178,10 +178,27 @@ logged-in users, WP identity cookies, and sites where a plugin makes
 anonymous nonces per-visitor by filtering `nonce_user_logged_out`
 (e.g. WooCommerce).
 
-REST reads (0.4.0): `modules.cache.rest` (default `true`) applies the same
+REST reads (0.3.1): `modules.cache.rest` (default `true`) applies the same
 policy to anonymous GETs on allowlisted REST routes via `rest_post_dispatch` —
 default allowlist is the plugin's own `/runtime`, `/resolve`, `/menus`;
 extend with `modules.cache.rest_routes` (exact-match route paths; per-user,
 by-id, and templated routes are structurally refused). Tunables:
 `modules.cache.rest_max_age` (`0`), `modules.cache.rest_s_maxage` (`300`),
 `modules.cache.rest_stale_while_revalidate` (`600`).
+
+## Data export
+
+| Hook | Type | Signature | Fires |
+|------|------|-----------|-------|
+| `wp_headless_data_exported` | action | `string $path, string $json, array $context` | After a route's data artifact is built (publish/update, or `wp headless export`). Hosts persist `$json` wherever their edge serves it (S3, filesystem, KV) under the `$path` key (`/` for the front page, `/about-us` style otherwise). `$context` carries `post_id`, `post_type`. |
+| `wp_headless_data_deleted` | action | `string $path, array $context` | When a route's artifact must be removed (unpublish, delete). |
+
+Config: `modules.data_export.enabled` (default `true`),
+`modules.data_export.post_types` (default `[]` = every REST-exposed public
+type). The artifact envelope is `{version, generated, path, request, content}`
+— `request` mirrors the runtime's resolved request shape and `content` is the
+INTERNAL `wp/v2` collection dispatch for the route's `?slug=` query, so it is
+shape-identical to the live API (registered rest fields and filters included):
+a frontend consuming `/wp/v2/{base}?slug=x` today can consume `content`
+without a parser change. Exports run at editor time (publish transitions),
+never on the visitor path. Backfill: `wp headless export [--post=<id>]`.
