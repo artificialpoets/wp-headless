@@ -53,8 +53,12 @@ jobs:
 
       - name: Decide bump level
         id: bump
+        # The commit message is attacker-/author-controlled text: pass it via
+        # env, never inline-interpolate into the script (backticks in a squash
+        # message execute as command substitution and kill the release).
+        env:
+          MSG: ${{ github.event.head_commit.message }}
         run: |
-          MSG="${{ github.event.head_commit.message }}"
           if   [[ "$MSG" == *"[bump:major]"* ]]; then LEVEL=major
           elif [[ "$MSG" == *"[bump:minor]"* ]]; then LEVEL=minor
           else LEVEL=patch
