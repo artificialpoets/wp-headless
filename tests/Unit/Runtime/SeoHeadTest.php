@@ -155,6 +155,7 @@ class SeoHeadTest extends TestCase {
 		Functions\when( 'is_404' )->justReturn( false );
 		Functions\when( 'get_queried_object' )->justReturn( null );
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		Functions\when( '__' )->returnArg( 1 );
 
 		$meta = $this->make()->exposeBuildMeta();
 
@@ -163,6 +164,66 @@ class SeoHeadTest extends TestCase {
 		$this->assertSame( 'website', $meta['og']['type'] );
 		$this->assertIsArray( $meta['jsonld'] );
 		$this->assertSame( 'https://schema.org', $meta['jsonld']['@context'] );
+	}
+
+	public function test_posts_page_does_not_inherit_the_front_page_identity(): void {
+		// is_home() is NOT is_front_page(). With a static front page set,
+		// is_home() is the blog index at its own URL. Sharing the front-page
+		// branch handed it the front page's canonical, title and description,
+		// which tells a crawler the two URLs are the same page.
+		Functions\when( 'is_front_page' )->justReturn( false );
+		Functions\when( 'is_home' )->justReturn( true );
+		Functions\when( 'is_singular' )->justReturn( false );
+		Functions\when( 'home_url' )->alias( static fn( $path = '' ) => 'https://x.test' . $path );
+		Functions\when( 'get_bloginfo' )->alias( static fn( $key ) => 'name' === $key ? 'X Test' : 'Tagline here.' );
+		Functions\when( 'get_option' )->alias( static fn( $key, $d = false ) => 'page_for_posts' === $key ? 7 : 0 );
+		Functions\when( 'get_post' )->justReturn( (object) array( 'ID' => 7, 'post_excerpt' => 'Writing from the team.' ) );
+		Functions\when( 'get_permalink' )->justReturn( 'https://x.test/blog/' );
+		Functions\when( 'get_the_title' )->justReturn( 'Blog' );
+		Functions\when( 'get_the_excerpt' )->justReturn( 'Writing from the team.' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( '' );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		Functions\when( 'is_search' )->justReturn( false );
+		Functions\when( 'is_404' )->justReturn( false );
+		Functions\when( 'get_queried_object' )->justReturn( null );
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		Functions\when( '__' )->returnArg( 1 );
+
+		$meta = $this->make()->exposeBuildMeta();
+
+		$this->assertSame(
+			'https://x.test/blog/',
+			$meta['canonical'],
+			'the blog index must canonicalise to itself, not to the site root'
+		);
+		$this->assertNotSame( 'https://x.test/', $meta['canonical'] );
+		$this->assertSame( 'Blog', $meta['og']['title'], 'and carry its own title, not the site name' );
+		$this->assertSame( 'https://x.test/blog/', $meta['og']['url'] );
+	}
+
+	public function test_posts_page_falls_back_to_the_root_when_it_is_the_front_page(): void {
+		// No static front page: is_home() IS the front page, and there is no
+		// page_for_posts to point at. The root is the right answer.
+		Functions\when( 'is_front_page' )->justReturn( false );
+		Functions\when( 'is_home' )->justReturn( true );
+		Functions\when( 'is_singular' )->justReturn( false );
+		Functions\when( 'home_url' )->alias( static fn( $path = '' ) => 'https://x.test' . $path );
+		Functions\when( 'get_bloginfo' )->alias( static fn( $key ) => 'name' === $key ? 'X Test' : 'Tagline here.' );
+		Functions\when( 'get_option' )->justReturn( 0 );  // no page_for_posts
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		Functions\when( 'is_search' )->justReturn( false );
+		Functions\when( 'is_404' )->justReturn( false );
+		Functions\when( 'get_queried_object' )->justReturn( null );
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		Functions\when( '__' )->returnArg( 1 );
+
+		$meta = $this->make()->exposeBuildMeta();
+
+		$this->assertSame( 'https://x.test/', $meta['canonical'] );
+		$this->assertSame( 'X Test', $meta['og']['title'] );
 	}
 
 	public function test_404_yields_empty_og_and_null_jsonld(): void {
