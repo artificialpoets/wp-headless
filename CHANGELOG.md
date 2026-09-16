@@ -7,13 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-08-29
+
 ### Fixed
+- **The posts page no longer inherits the front page's identity.**
+  `build_meta()` branched on `is_front_page() || is_home()`. Those are not
+  synonyms: with a static front page, `is_home()` is the *posts* page
+  (`page_for_posts`) at its own URL. Sharing the branch gave the blog index
+  the front page's canonical, title, description and social image — an
+  instruction to crawlers that the two URLs are one page. Observed live: a
+  blog index serving `<link rel="canonical" href="https://site/">` while
+  every other route canonicalised to itself. `is_home()` now has its own
+  branch (still after `is_front_page()`, so the documented ordering holds),
+  resolving the posts page's own permalink, title and excerpt, and falling
+  back to the site root when no static front page is set.
 - **Front-page artifact lands at `/`.** `get_permalink()` for the
   `page_on_front` page reports the page's own slug path (`/home/`), so the
   site's most-navigated route exported to a key no route-by-path consumer
   ever requests. Exports and retractions now swap in `home_url('/')` when
   the post is the statically-assigned front page, putting the artifact at
-  the documented `/` key.
+  the documented `/` key. (Note: vanilla core already returns `home_url('/')`
+  here — a `page_link` filter in the host theme was overriding it. The swap
+  is still correct as a defence, but it is a belt, not the braces.)
 
 ## [0.4.0] — 2026-08-19 — data export
 

@@ -89,6 +89,12 @@ class SeoHead implements Module {
 	 * Branch order matters: a static front page satisfies both is_front_page()
 	 * and is_singular(), and the front page must win.
 	 *
+	 * is_home() is NOT a synonym for is_front_page(). On a site with a static
+	 * front page, is_home() is the POSTS page (the blog index) and is a
+	 * different URL entirely. Sharing the front-page branch with it gave the
+	 * blog index the front page's canonical, title, description and image —
+	 * telling crawlers the two were the same page.
+	 *
 	 * Robots meta is intentionally absent here: core's wp_robots runs at
 	 * wp_head priority 1 and HtmlDocument captures its output, so SeoHead
 	 * never emits (or competes with) a robots tag.
@@ -105,7 +111,7 @@ class SeoHead implements Module {
 			'jsonld'      => null,
 		);
 
-		if ( is_front_page() || is_home() ) {
+		if ( is_front_page() ) {
 			$canonical  = home_url( '/' );
 			$front_post = null;
 			$front_id   = (int) get_option( 'page_on_front' );
@@ -124,6 +130,28 @@ class SeoHead implements Module {
 			$meta['og']          = array(
 				'type'        => 'website',
 				'title'       => $site_name,
+				'description' => $meta['description'],
+				'url'         => $canonical,
+				'site_name'   => $site_name,
+				'image'       => $image['url'],
+			);
+			$meta['jsonld']      = $this->schema_graph->build();
+		} elseif ( is_home() ) {
+			// The blog index. With a static front page this is a real, separate
+			// page (page_for_posts); without one it IS the front page and
+			// is_front_page() above already claimed it.
+			$posts_id    = (int) get_option( 'page_for_posts' );
+			$posts_post  = $posts_id > 0 ? get_post( $posts_id ) : null;
+			$canonical   = $posts_post ? (string) get_permalink( $posts_post ) : home_url( '/' );
+			$title       = $posts_post ? (string) get_the_title( $posts_post ) : $site_name;
+			$description = $posts_post ? self::clip( $this->post_description( $posts_post ) ) : '';
+
+			$image               = $this->resolve_social_image( $posts_post );
+			$meta['description'] = $description;
+			$meta['canonical']   = $canonical;
+			$meta['og']          = array(
+				'type'        => 'website',
+				'title'       => $title,
 				'description' => $meta['description'],
 				'url'         => $canonical,
 				'site_name'   => $site_name,
