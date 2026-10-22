@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Static publisher** (`StaticPublish\StaticPublish`, key `static_publish`):
+  writes a site's public pages, each route's data-export artifact and the
+  theme build to a storage target, so a host can serve the public site from
+  object storage or a plain directory while WordPress sleeps. **Opt-in per
+  site, off by default** — the `wp_headless_static_publish` option (`on`) or
+  the `WP_HEADLESS_STATIC_PUBLISH` constant, plus a configured target; a
+  target alone never turns it on. Pages are read as an anonymous browser
+  (Chrome's `Accept`, no cookies, no redirects followed). A timeout or 5xx
+  keeps the last good copy; a 404, 410 or redirect removes it, as does a post
+  made private, drafted, trashed or password-protected. Unchanged objects are
+  never rewritten (content-hash manifest per target). Each run writes a public
+  `__data/__status.json` (running, started, published, error class only), a
+  redirect map (`__data/__redirects.json`) and the 404 page
+  (`__data/__shell/404.html`) so an edge can answer like WordPress while it
+  sleeps. A run lock keeps one publish at a time; a run that throws records
+  its error class and keeps the site dirty. Changes only mark the site dirty
+  and schedule one cron event — the publish runs from cron or
+  `wp headless static publish|status`, never in the request that saved.
+  Targets: a local directory (built in) and S3-compatible storage (only when
+  the AWS SDK for PHP is loaded or a host supplies a client; no credentials
+  in the plugin). New hooks: `wp_headless_static_storage`,
+  `wp_headless_static_s3_client`, `wp_headless_static_paths`,
+  `wp_headless_static_redirects`, `wp_headless_static_published`,
+  `wp_headless_static_publish_failed`. Config under
+  `modules.static_publish.*` (see docs/HOOKS.md).
+- `DataExport::build()` returns a post's artifact without announcing it;
+  `AssetProxy::cache_control_for()`, `AssetProxy::is_content_hashed()` and
+  `AssetProxy::MIME_TYPES` expose the proxy's asset rules. Behavior of both
+  modules is unchanged.
+
 ## [0.4.2] — 2026-08-29
 
 ### Fixed

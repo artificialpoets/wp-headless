@@ -49,6 +49,7 @@ To switch headless mode off, activate any non-headless theme. The plugin stands 
 - **REST enrichments.** Custom fields added to posts/pages: `featured_image` (with srcset/sizes/width/height), `author_info` (with link/description), `comment_count`, `adjacent` (previous/next post), and `permalink`.
 - **CORS.** Configurable allowed origins with proper preflight handling.
 - **Nav menu locations.** Registers `primary` and `footer` so themes that delegate to the plugin get menu locations out of the box.
+- **Static publishing (opt-in).** Writes the public pages, their data artifacts and the theme build to a local directory or an S3-compatible bucket, so a host can serve the public site while WordPress sleeps. See [Static publishing](#static-publishing-opt-in).
 
 ## REST endpoints
 
@@ -202,6 +203,39 @@ The plugin enters headless mode whenever the **active WordPress theme has a read
 A child theme without its own `dist/` falls back to the parent theme's build.
 
 Settings → WP Headless shows the current status (engaged or paused, which theme, dist path, REST endpoints) but does not control activation — that lives in Appearance → Themes where you'd expect it.
+
+## Static publishing (opt-in)
+
+The `static_publish` module copies the public site to storage: every published page, archive and crawler file as WordPress serves it to an anonymous visitor, each route's data artifact, and the theme build. A host serves those copies from object storage or a plain directory, and WordPress only needs to run for editors.
+
+It is off by default and opt-in per site. It runs only when the site opts in **and** a storage target is configured:
+
+```bash
+wp option update wp_headless_static_publish on   # opt in (or define WP_HEADLESS_STATIC_PUBLISH true)
+wp headless static publish                       # publish now
+wp headless static status                        # target, lock, dirty flag, last publish
+wp option update wp_headless_static_publish off  # stop, without a deploy
+```
+
+```php
+// wp-content/headless/wp-headless.config.php
+return array(
+	'modules' => array(
+		'static_publish' => array(
+			'target' => 'local',                  // or 's3'
+			'path'   => '/srv/www/example-static', // local target
+			// 's3' => array( 'bucket' => 'my-bucket', 'prefix' => 'sites/example', 'region' => 'us-east-1' ),
+		),
+	),
+);
+```
+
+- **When it runs.** A change visitors can see (a post published, updated or unpublished; a term, menu, Customizer, theme, reading or permalink setting change) marks the site dirty and schedules one cron publish a minute later. Nothing is published inside the request that saved.
+- **What a copy follows.** A 200 is stored; unchanged bytes are not rewritten. A timeout or 5xx keeps the last good copy. A 404, 410 or redirect removes it, and so does a post made private, drafted, trashed or password-protected.
+- **What an edge reads.** `__data/__status.json` (running, started, published, error class), `__data/__redirects.json` (answer redirects while WordPress sleeps) and `__data/__shell/404.html` (answer unknown paths with the site's own 404 page).
+- **Storage.** The local target is built in. The S3 target needs the AWS SDK for PHP already loaded, or a client from the `wp_headless_static_s3_client` filter; the plugin holds no credentials. Any other store plugs in through `wp_headless_static_storage`.
+
+The storage layout, every setting and every hook are in [docs/HOOKS.md](docs/HOOKS.md#static-publishing).
 
 ## Configuration
 

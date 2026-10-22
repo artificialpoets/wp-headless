@@ -25,6 +25,7 @@ use WPHeadless\Runtime\FrontendBridge;
 use WPHeadless\Runtime\NavMenus;
 use WPHeadless\Runtime\Prerender;
 use WPHeadless\Runtime\SeoHead;
+use WPHeadless\StaticPublish\StaticPublish;
 use WPHeadless\Theme\ThemeManager;
 
 class Plugin {
@@ -74,6 +75,7 @@ class Plugin {
 			'cache'            => new CachePolicy( $this->config ),
 			'prerender'        => new Prerender( $this->config ),
 			'data_export'      => new DataExport( $this->config ),
+			'static_publish'   => new StaticPublish( $this->config, $this->theme_manager ),
 			'seo_head'         => new SeoHead( $this->config, $this->theme_manager ),
 			'content_fields'   => new ContentFields( $this->config ),
 			'comments'         => new Comments(),
@@ -185,6 +187,7 @@ class Plugin {
 
 	public function deactivate(): void {
 		flush_rewrite_rules();
+		wp_clear_scheduled_hook( StaticPublish::CRON );
 	}
 
 	/**

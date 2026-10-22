@@ -15,6 +15,25 @@ use WPHeadless\Routing\RewriteRules;
 use WPHeadless\Theme\ThemeManager;
 
 class AssetProxy implements Module {
+	/**
+	 * Content types for web asset extensions that WordPress restricts or
+	 * misidentifies. The static publisher's asset mirror uses the same map.
+	 */
+	public const MIME_TYPES = array(
+		'js'          => 'application/javascript',
+		'mjs'         => 'application/javascript',
+		'css'         => 'text/css',
+		'json'        => 'application/json',
+		'map'         => 'application/json',
+		'webmanifest' => 'application/manifest+json',
+		'svg'         => 'image/svg+xml',
+		'woff'        => 'font/woff',
+		'woff2'       => 'font/woff2',
+		'ttf'         => 'font/ttf',
+		'otf'         => 'font/otf',
+		'ico'         => 'image/x-icon',
+	);
+
 	/** @var Config */
 	private Config $config;
 
@@ -132,23 +151,8 @@ class AssetProxy implements Module {
 		// Explicit map for web asset types that WordPress restricts or misidentifies.
 		$ext = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
 
-		$map = array(
-			'js'          => 'application/javascript',
-			'mjs'         => 'application/javascript',
-			'css'         => 'text/css',
-			'json'        => 'application/json',
-			'map'         => 'application/json',
-			'webmanifest' => 'application/manifest+json',
-			'svg'         => 'image/svg+xml',
-			'woff'        => 'font/woff',
-			'woff2'       => 'font/woff2',
-			'ttf'         => 'font/ttf',
-			'otf'         => 'font/otf',
-			'ico'         => 'image/x-icon',
-		);
-
-		if ( isset( $map[ $ext ] ) ) {
-			return $map[ $ext ];
+		if ( isset( self::MIME_TYPES[ $ext ] ) ) {
+			return self::MIME_TYPES[ $ext ];
 		}
 
 		$filetype = wp_check_filetype( $file_path );
@@ -169,7 +173,25 @@ class AssetProxy implements Module {
 	}
 
 	protected function cache_control_header( string $filename ): string {
-		if ( $this->looks_content_hashed( $filename ) ) {
+		return self::cache_policy( $this->looks_content_hashed( $filename ) );
+	}
+
+	/**
+	 * Cache-Control for an asset file: a year and immutable for
+	 * content-hashed names, an hour otherwise. Shared with the static
+	 * publisher's asset mirror, so a mirrored copy carries the same policy.
+	 *
+	 * @param string $filename Base filename.
+	 */
+	public static function cache_control_for( string $filename ): string {
+		return self::cache_policy( self::is_content_hashed( $filename ) );
+	}
+
+	/**
+	 * @param bool $hashed Whether the filename carries a content hash.
+	 */
+	private static function cache_policy( bool $hashed ): string {
+		if ( $hashed ) {
 			return 'public, max-age=31536000, immutable';
 		}
 
@@ -190,6 +212,15 @@ class AssetProxy implements Module {
 	 *   letter, or '-'/'_'.
 	 */
 	protected function looks_content_hashed( string $filename ): bool {
+		return self::is_content_hashed( $filename );
+	}
+
+	/**
+	 * Static form of looks_content_hashed() (same rules).
+	 *
+	 * @param string $filename Base filename.
+	 */
+	public static function is_content_hashed( string $filename ): bool {
 		if ( 1 === preg_match( '/[.-][a-f0-9]{8,}\./i', $filename ) ) {
 			return true;
 		}

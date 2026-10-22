@@ -21,10 +21,10 @@ Two shapes are explicitly frozen:
 | `wp_headless_booted` | action | `Plugin $plugin` | Once, after every enabled module registered. |
 
 Built-in module keys: `rewrite_rules`, `nav_menus`, `block_annotator`,
-`asset_proxy`, `frontend_bridge`, `cache`, `prerender`, `seo_head`,
-`content_fields`, `comments`, `menu_endpoint`, `runtime_endpoint`,
-`resolve_endpoint`, `cors`, `head_cleanup`, `llms_txt`, `robots_txt`,
-`settings_page`.
+`asset_proxy`, `frontend_bridge`, `cache`, `prerender`, `data_export`,
+`static_publish`, `seo_head`, `content_fields`, `comments`, `menu_endpoint`,
+`runtime_endpoint`, `resolve_endpoint`, `cors`, `head_cleanup`, `llms_txt`,
+`robots_txt`, `settings_page`.
 
 Any module can be disabled per site via config — no code required:
 
@@ -202,3 +202,71 @@ shape-identical to the live API (registered rest fields and filters included):
 a frontend consuming `/wp/v2/{base}?slug=x` today can consume `content`
 without a parser change. Exports run at editor time (publish transitions),
 never on the visitor path. Backfill: `wp headless export [--post=<id>]`.
+
+## Static publishing
+
+The `static_publish` module writes the public site to a storage target, so a
+host can serve it from object storage or a plain directory while WordPress
+sleeps. It is **opt-in per site and off by default**: it runs only when the
+`wp_headless_static_publish` option is `on` (or the
+`WP_HEADLESS_STATIC_PUBLISH` constant is `true`) **and** a target is
+configured. A configured target alone never turns it on. The constant, when
+defined, wins over the option; `false` keeps a site off.
+
+| Hook | Type | Signature | Fires |
+|------|------|-----------|-------|
+| `wp_headless_static_storage` | filter | `?Storage $storage, Config $config → ?Storage` | Whenever the publisher resolves its target (cron run, CLI). Return any `WPHeadless\StaticPublish\Storage` implementation to write elsewhere (R2, GCS, KV, your own S3 client); `null` keeps the publisher off. |
+| `wp_headless_static_s3_client` | filter | `?object $client, array $settings → ?object` | While building the `s3` target. Return an object with the AWS SDK's `putObject(array)` and `deleteObject(array)`. Without one, a client is built only when the AWS SDK for PHP is already loaded (default credential chain); otherwise the target stays off. |
+| `wp_headless_static_paths` | filter | `array<int,string> $paths, array $routes → array` | Each run, before the non-singular paths are read (archives with pagination, `robots.txt`, `llms.txt`, `llms-full.txt`, `wp-sitemap.xml` and the sitemaps it lists, the sitemap stylesheets, `/feed/`). Add routes only a plugin knows about. |
+| `wp_headless_static_redirects` | filter | `array<string,string> $map → array` | Each run, while building `__data/__redirects.json` (path with leading and trailing slash → absolute URL). Built in: the static front page's own path and renamed posts' old slugs. Redirect plugins add their rules here. |
+| `wp_headless_static_published` | action | `array $stats, Storage $storage` | After a successful run. Hosts purge their CDN here — one wildcard invalidation is usually cheapest. |
+| `wp_headless_static_publish_failed` | action | `\Throwable $error` | After a run that threw is recorded. The site stays dirty; the next change or a CLI run retries. Hosts alert here. |
+
+Config, under `modules.static_publish`:
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `target` | `''` | `local`, `s3`, or empty (no target unless the storage filter supplies one). |
+| `path` | `''` | Local target: absolute directory. |
+| `s3` | `[]` | `bucket`, `prefix`, `region` (`us-east-1`), `endpoint` (S3-compatible stores), `path_style`. No credentials. |
+| `origin` | `''` | Base URL to read pages from, e.g. `http://127.0.0.1:8080`, sent with the public `Host` (and `X-Forwarded-Proto: https`). Empty reads the public URL — set it when the public host is a CDN. |
+| `timeout` | `30` | Seconds per read before it counts as failed. |
+| `delay` | `60` | Seconds between a change and its cron publish; later changes join it. |
+| `document_cache` | `public, max-age=60, s-maxage=300, stale-while-revalidate=3600` | Cache-Control for a stored copy whose origin answer was not public. |
+| `assets` | `true` | Mirror the theme build to the asset mount. Skipped when `frontend.asset_base_url` is set. |
+
+Storage layout (keys are relative to the target):
+
+| Key | Content |
+|-----|---------|
+| `index.html`, `<path>/index.html` | Every `publish` singular without a password, and the archives with their pagination. A path with a file extension is its own key (`robots.txt`). |
+| `__data/routes/<path>/index.json` | The route's data-export envelope (`/` → `__data/routes/index.json`). |
+| `<asset mount>/...` | The theme build (`{theme}/dist/`), proxy content types and cache policy. Never swept. |
+| `__data/__status.json` | `{v, running, started, published, nextScheduled}`; after a failure `failedAt` and `error` (the exception's short class name). Public: never messages, paths or counts. `nextScheduled` is when WordPress must be awake to publish a scheduled post. |
+| `__data/__redirects.json` | The redirect map. |
+| `__data/__shell/404.html` | The site's 404 page. |
+
+A stored copy follows these rules:
+
+- Each page is read as an anonymous browser: no cookies, no redirects
+  followed, Chrome's navigation `Accept` header. An `Accept` naming JSON
+  makes `wp_is_json_request()` true, and wp-headless would stand down.
+- A 200 is stored. A body, content type and cache policy whose hash matches
+  the last write to this target is not rewritten (`--force` rewrites all).
+  The publisher's reads get an empty REST nonce in the runtime payload, so a
+  copy never carries an expiring nonce and stays byte-stable across runs.
+- A timeout, 408, 429 or 5xx keeps the last good copy. A 404, 410, redirect
+  or other status removes it, and so does a post that is no longer a
+  published, password-less post. A run that reads no published post sweeps
+  nothing.
+- One run at a time: a second run exits (the CLI non-zero) and leaves the
+  change queued for the running one, which goes round again. A run that
+  throws records the error class, keeps the site dirty and rethrows.
+
+An edge in front of the storage answers a request by trying the document
+key for its path. On a miss it forwards to WordPress while WordPress is
+awake. While it sleeps, it answers a path in `__data/__redirects.json` with a
+301 and anything else with `__data/__shell/404.html` and a 404 status.
+
+CLI: `wp headless static publish [--force]` and `wp headless static status`.
+
