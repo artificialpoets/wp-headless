@@ -27,7 +27,7 @@ class RequestMatcherTest extends TestCase {
 		Functions\when( 'is_admin' )->justReturn( false );
 		Functions\when( 'wp_doing_ajax' )->justReturn( false );
 		Functions\when( 'wp_doing_cron' )->justReturn( false );
-		Functions\when( 'wp_is_json_request' )->justReturn( false );
+		Functions\when( 'wp_unslash' )->returnArg();
 		Functions\when( 'is_feed' )->justReturn( false );
 		Functions\when( 'is_trackback' )->justReturn( false );
 		Functions\when( 'is_robots' )->justReturn( false );
@@ -40,6 +40,7 @@ class RequestMatcherTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
+		unset( $_SERVER['HTTP_ACCEPT'], $_SERVER['CONTENT_TYPE'] );
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -125,5 +126,22 @@ class RequestMatcherTest extends TestCase {
 
 		$matcher = new RequestMatcher( $config, $theme_manager );
 		$this->assertFalse( $matcher->should_serve_frontend() );
+	}
+
+	public function test_a_client_that_prefers_json_stands_down(): void {
+		$_SERVER['HTTP_ACCEPT'] = 'application/json, text/html;q=0.9';
+		$this->assertFalse( $this->makeMatcher()->should_serve_frontend() );
+	}
+
+	public function test_listing_json_beside_html_still_gets_the_frontend(): void {
+		// core's wp_is_json_request() is true here, and WordPress's native
+		// render of the URL then went into CDN caches keyed without Accept.
+		$_SERVER['HTTP_ACCEPT'] = 'application/json, text/html';
+		$this->assertTrue( $this->makeMatcher()->should_serve_frontend() );
+	}
+
+	public function test_a_json_body_stands_down(): void {
+		$_SERVER['CONTENT_TYPE'] = 'application/json; charset=utf-8';
+		$this->assertFalse( $this->makeMatcher()->should_serve_frontend() );
 	}
 }

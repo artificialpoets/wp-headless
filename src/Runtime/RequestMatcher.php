@@ -9,6 +9,7 @@ namespace WPHeadless\Runtime;
 
 use WPHeadless\Config\Config;
 use WPHeadless\Contracts\Module;
+use WPHeadless\Http\AcceptNegotiation;
 use WPHeadless\Routing\RewriteRules;
 use WPHeadless\Seo\LlmsTxt;
 use WPHeadless\Theme\ThemeManager;
@@ -41,7 +42,12 @@ class RequestMatcher {
 			return false;
 		}
 
-		if ( function_exists( 'wp_is_json_request' ) && wp_is_json_request() ) {
+		// A JSON client gets WordPress's native response. Not core's
+		// wp_is_json_request(): it is true for any Accept that lists JSON at
+		// all, so `Accept: application/json, text/html` turned a page URL into
+		// WordPress's own render, which a CDN keyed without Accept then served
+		// to everyone. See AcceptNegotiation.
+		if ( AcceptNegotiation::is_json_client() ) {
 			return false;
 		}
 

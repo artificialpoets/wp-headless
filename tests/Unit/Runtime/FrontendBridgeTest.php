@@ -9,6 +9,7 @@
 namespace WPHeadless\Tests\Unit\Runtime;
 
 use Brain\Monkey;
+use Brain\Monkey\Functions;
 use PHPUnit\Framework\TestCase;
 use WPHeadless\Runtime\FrontendBridge;
 
@@ -119,5 +120,20 @@ class FrontendBridgeTest extends TestCase {
 	public function test_missing_keys_are_treated_as_false(): void {
 		$this->assertFalse( FrontendBridge::resolve_is_404( array(), false ) );
 		$this->assertTrue( FrontendBridge::resolve_is_404( array(), true ) );
+	}
+
+	public function test_a_json_clients_native_response_is_kept_out_of_shared_caches(): void {
+		Functions\expect( 'nocache_headers' )->once();
+		$this->assertTrue( FrontendBridge::keep_out_of_shared_caches( true, false ) );
+	}
+
+	public function test_other_stand_downs_keep_their_cache_headers(): void {
+		Functions\expect( 'nocache_headers' )->never();
+		$this->assertFalse( FrontendBridge::keep_out_of_shared_caches( false, false ) );
+	}
+
+	public function test_nothing_is_sent_after_output_started(): void {
+		Functions\expect( 'nocache_headers' )->never();
+		$this->assertFalse( FrontendBridge::keep_out_of_shared_caches( true, true ) );
 	}
 }

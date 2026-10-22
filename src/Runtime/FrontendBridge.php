@@ -9,6 +9,7 @@ namespace WPHeadless\Runtime;
 
 use WPHeadless\Config\Config;
 use WPHeadless\Contracts\Module;
+use WPHeadless\Http\AcceptNegotiation;
 use WPHeadless\Http\ConditionalRequest;
 use WPHeadless\Theme\ThemeManager;
 
@@ -40,6 +41,7 @@ class FrontendBridge implements Module {
 
 	public function maybe_serve_frontend(): void {
 		if ( ! $this->matcher->should_serve_frontend() ) {
+			self::keep_out_of_shared_caches( AcceptNegotiation::is_json_client(), headers_sent() );
 			return;
 		}
 
@@ -145,6 +147,25 @@ class FrontendBridge implements Module {
 		foreach ( $headers as $name => $value ) {
 			header( $name . ': ' . $value );
 		}
+	}
+
+	/**
+	 * A JSON client's response is WordPress's native one, chosen by a request
+	 * header most CDN cache keys leave out, so a shared cache must never store
+	 * it under the URL every visitor reads. Static and argument-driven so it
+	 * can be tested without a request.
+	 *
+	 * @param bool $json_client  The request is a JSON client.
+	 * @param bool $headers_sent Output already started (then nothing can be sent).
+	 * @return bool Whether the no-store headers were sent.
+	 */
+	public static function keep_out_of_shared_caches( bool $json_client, bool $headers_sent ): bool {
+		if ( ! $json_client || $headers_sent ) {
+			return false;
+		}
+		header( 'Vary: Accept', false );
+		nocache_headers();
+		return true;
 	}
 
 	/**
