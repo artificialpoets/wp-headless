@@ -36,6 +36,17 @@ final class RecordingS3Client {
 	}
 }
 
+/** Answers its operations through __call(), as the AWS SDK's S3Client does. */
+final class MagicS3Client {
+	/** @var array<int, array{0:string, 1:array<string,mixed>}> */
+	public array $calls = array();
+
+	public function __call( string $name, array $args ) {
+		$this->calls[] = array( $name, $args[0] ?? array() );
+		return array();
+	}
+}
+
 final class S3StorageTest extends TestCase {
 	use MockeryPHPUnitIntegration;
 
@@ -132,6 +143,17 @@ final class S3StorageTest extends TestCase {
 	public function test_from_settings_is_null_without_the_sdk_or_a_client(): void {
 		$this->assertFalse( class_exists( '\Aws\S3\S3Client' ), 'The test environment must not ship the AWS SDK.' );
 		$this->assertNull( S3Storage::from_settings( array( 'bucket' => 'assets' ) ) );
+	}
+
+	public function test_a_client_with_magic_methods_is_accepted(): void {
+		$client  = new MagicS3Client();
+		$storage = new S3Storage( $client, 'assets', 'p' );
+		$storage->put( 'index.html', '<p>home</p>', 'text/html; charset=UTF-8', 'no-cache' );
+		$storage->delete( 'old/index.html' );
+
+		$this->assertSame( array( 'putObject', 'deleteObject' ), array_column( $client->calls, 0 ) );
+		$this->assertSame( 'p/index.html', $client->calls[0][1]['Key'] );
+		$this->assertSame( 'p/old/index.html', $client->calls[1][1]['Key'] );
 	}
 
 	public function test_a_client_without_the_needed_methods_is_refused(): void {

@@ -34,7 +34,9 @@ final class S3Storage implements Storage {
 	 * @param string $prefix Key prefix, e.g. `sites/example`.
 	 */
 	public function __construct( $client, string $bucket, string $prefix = '' ) {
-		if ( ! is_object( $client ) || ! method_exists( $client, 'putObject' ) || ! method_exists( $client, 'deleteObject' ) ) {
+		// is_callable, not method_exists: the AWS SDK's S3Client answers
+		// putObject() and deleteObject() through __call().
+		if ( ! is_object( $client ) || ! is_callable( array( $client, 'putObject' ) ) || ! is_callable( array( $client, 'deleteObject' ) ) ) {
 			throw new StorageError( 'The S3 target needs a client with putObject() and deleteObject().' );
 		}
 		if ( '' === $bucket ) {
