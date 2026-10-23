@@ -75,5 +75,25 @@ return array(
 		// 	// Vite SPA reading only site/rest/frontend/request:
 		// 	// 'payload_keys' => array( 'site', 'rest', 'frontend' ),
 		// ),
+		// Static publisher. Off until the site opts in with
+		// `wp option update wp_headless_static_publish on`; a target alone
+		// never turns it on. See docs/HOOKS.md#static-publishing.
+		// 'static_publish' => array(
+		// 	'target'         => 'local',  // '' | 'local' | 's3'
+		// 	'path'           => '/srv/www/example-static',
+		// 	's3'             => array(
+		// 		'bucket'     => '',
+		// 		'prefix'     => '',
+		// 		'region'     => 'us-east-1',
+		// 		'endpoint'   => '',     // S3-compatible stores (R2, MinIO)
+		// 		'path_style' => false,
+		// 	),
+		// 	'origin'         => '',     // e.g. 'http://127.0.0.1:8080' when the public host is a CDN
+		// 	'timeout'        => 30,
+		// 	'delay'          => 60,     // seconds between a change and its publish
+		// 	'document_cache' => 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600',
+		// 	'assets'         => true,   // mirror the theme build where documents load it
+		// 	'wake_url'       => '',     // host's wake endpoint: publishes __data/__shell/503.html
+		// ),
 	),
 );

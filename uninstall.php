@@ -29,6 +29,15 @@ $wp_headless_options = array(
 	// Pre-1.0 — any other namespaced options that may linger.
 	'wp_headless_settings',
 	'wp_headless_config',
+
+	// Static publisher: opt-in flag, run lock, dirty flag, content-hash
+	// manifest and last-publish time. Objects already written to the
+	// storage target are left there.
+	'wp_headless_static_publish',
+	'wp_headless_static_lock',
+	'wp_headless_static_dirty',
+	'wp_headless_static_manifest',
+	'wp_headless_static_published',
 );
 
 foreach ( $wp_headless_options as $option_name ) {

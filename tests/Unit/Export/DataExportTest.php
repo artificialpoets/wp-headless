@@ -332,4 +332,37 @@ final class DataExportTest extends TestCase {
 		);
 		$this->exporter()->on_deleted( 44, $post );
 	}
+
+	// --- build (used by the static publisher) ---
+
+	public function test_build_returns_the_artifact_without_announcing_it(): void {
+		Functions\when( 'get_post_type_object' )->justReturn( $this->restType() );
+		Functions\when( 'get_permalink' )->justReturn( 'https://ex.test/about-us/' );
+		Actions\expectDone( 'wp_headless_data_exported' )->never();
+
+		$artifact = $this->exporter()->build(
+			(object) array(
+				'ID'        => 42,
+				'post_type' => 'page',
+				'post_name' => 'about-us',
+			)
+		);
+
+		$this->assertSame( '/about-us', $artifact['path'] );
+		$this->assertSame( array( array( 'id' => 7 ) ), json_decode( $artifact['json'], true )['content'] );
+	}
+
+	public function test_build_is_null_for_a_type_that_is_not_exported(): void {
+		Functions\when( 'get_post_type_object' )->justReturn( $this->restType( false ) );
+
+		$this->assertNull(
+			$this->exporter()->build(
+				(object) array(
+					'ID'        => 42,
+					'post_type' => 'secret',
+					'post_name' => 'x',
+				)
+			)
+		);
+	}
 }
