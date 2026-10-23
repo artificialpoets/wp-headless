@@ -63,6 +63,18 @@ class StaticPublish implements Module {
 		add_action( 'updated_option', array( $this, 'on_option_updated' ), 20, 1 );
 		add_action( self::CRON, array( $this, 'run_scheduled' ) );
 		add_filter( 'wp_headless_runtime_data', array( $this, 'static_runtime' ), 1000 );
+		add_action(
+			'init',
+			array(
+				new Activity(
+					function (): ?Storage {
+						return $this->enabled() ? $this->storage() : null;
+					}
+				),
+				'note',
+			),
+			20
+		);
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'headless static', new Cli( $this ) );
@@ -126,13 +138,15 @@ class StaticPublish implements Module {
 		}
 		$fetcher = new Fetcher( home_url( '/' ), (string) $this->setting( 'origin', '' ), (int) $this->setting( 'timeout', 30 ) );
 		$data    = false !== $this->config->get( 'modules.data_export.enabled', true ) ? new DataExport( $this->config ) : null;
+		$assets  = $this->asset_target();
 		return new Publisher(
 			$storage,
 			$fetcher,
 			array(
 				'document_cache' => (string) $this->setting( 'document_cache', '' ),
-				'dist'           => $this->asset_dist(),
-				'mount'          => $this->config->asset_mount(),
+				'dist'           => $assets['dist'],
+				'mount'          => $assets['prefix'],
+				'wake_url'       => (string) $this->setting( 'wake_url', '' ),
 			),
 			null,
 			null,
@@ -155,7 +169,7 @@ class StaticPublish implements Module {
 
 	/**
 	 * A post change visitors could see: one that is, or was, published or
-	 * scheduled (a scheduled post moves the status file's `nextScheduled`).
+	 * scheduled (a scheduled post moves the status file's `nextWake`).
 	 *
 	 * @param int         $post_id     Post ID.
 	 * @param object      $post        Post after the change.
@@ -262,14 +276,56 @@ class StaticPublish implements Module {
 	}
 
 	/**
-	 * The build directory to mirror, or '' when assets are served elsewhere
-	 * (`frontend.asset_base_url`), the mirror is off, or there is no build.
+	 * The build directory to mirror and the key prefix to mirror it under.
+	 *
+	 * Documents load the build from `frontend.asset_base_url` when it is set,
+	 * otherwise from the asset mount. An asset base on the site's own host
+	 * (e.g. the theme's `/wp-content/themes/<theme>/dist`) is mirrored under
+	 * its own path, so the copies sit where the documents point. One on
+	 * another host (a CDN) is served from there, and nothing is mirrored.
+	 * Neither is mirrored when the mirror is off or there is no build.
+	 *
+	 * @return array{dist:string, prefix:string} An empty dist means no mirror.
 	 */
-	private function asset_dist(): string {
-		if ( false === $this->setting( 'assets', true ) || '' !== (string) $this->config->get( 'frontend.asset_base_url', '' ) || null === $this->theme_manager ) {
-			return '';
+	public function asset_target(): array {
+		$none = array(
+			'dist'   => '',
+			'prefix' => $this->config->asset_mount(),
+		);
+		if ( false === $this->setting( 'assets', true ) || null === $this->theme_manager ) {
+			return $none;
 		}
-		return (string) $this->theme_manager->resolve_dist_path();
+		$prefix = $this->config->asset_mount();
+		$base   = (string) $this->config->get( 'frontend.asset_base_url', '' );
+		if ( '' !== $base ) {
+			$path = self::same_host_path( $base, home_url( '/' ) );
+			if ( null === $path ) {
+				return $none;
+			}
+			$prefix = $path;
+		}
+		return array(
+			'dist'   => (string) $this->theme_manager->resolve_dist_path(),
+			'prefix' => $prefix,
+		);
+	}
+
+	/**
+	 * The path of a URL on the same host as the site, without surrounding
+	 * slashes, or null when the URL is on another host or is the site root
+	 * (mirroring at the root would mix the build with the documents).
+	 *
+	 * @param string $url  Absolute URL, e.g. an asset base.
+	 * @param string $home The site's home URL.
+	 */
+	public static function same_host_path( string $url, string $home ): ?string {
+		$asset = wp_parse_url( $url );
+		$site  = wp_parse_url( $home );
+		if ( ! is_array( $asset ) || ! is_array( $site ) || empty( $asset['host'] ) || strtolower( (string) $asset['host'] ) !== strtolower( (string) ( $site['host'] ?? '' ) ) ) {
+			return null;
+		}
+		$path = trim( (string) ( $asset['path'] ?? '' ), '/' );
+		return '' === $path || ! Keys::is_safe( $path ) ? null : $path;
 	}
 
 	/**

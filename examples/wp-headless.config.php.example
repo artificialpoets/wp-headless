@@ -92,7 +92,8 @@ return array(
 		// 	'timeout'        => 30,
 		// 	'delay'          => 60,     // seconds between a change and its publish
 		// 	'document_cache' => 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600',
-		// 	'assets'         => true,   // mirror the theme build to the asset mount
+		// 	'assets'         => true,   // mirror the theme build where documents load it
+		// 	'wake_url'       => '',     // host's wake endpoint: publishes __data/__shell/503.html
 		// ),
 	),
 );

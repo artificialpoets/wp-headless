@@ -232,7 +232,9 @@ return array(
 
 - **When it runs.** A change visitors can see (a post published, updated or unpublished; a term, menu, Customizer, theme, reading or permalink setting change) marks the site dirty and schedules one cron publish a minute later. Nothing is published inside the request that saved.
 - **What a copy follows.** A 200 is stored; unchanged bytes are not rewritten. A timeout or 5xx keeps the last good copy. A 404, 410 or redirect removes it, and so does a post made private, drafted, trashed or password-protected.
-- **What an edge reads.** `__data/__status.json` (running, started, published, error class), `__data/__redirects.json` (answer redirects while WordPress sleeps) and `__data/__shell/404.html` (answer unknown paths with the site's own 404 page).
+- **What an edge reads.** `__data/__status.json` (running, started, published, `nextWake`, error class), `__data/__redirects.json` (answer redirects while WordPress sleeps), `__data/__shell/404.html` (answer unknown paths with the site's own 404 page) and, when `wake_url` is set, `__data/__shell/503.html` (the page that wakes WordPress for an editor).
+- **What a host's scheduler reads.** `__data/__activity.json` holds `{"lastEditor": ISO}`, written at most once a minute while an editor is signed in. A host sleeps WordPress once it is older than its idle window, and wakes it at `nextWake` for a scheduled post.
+- **Theme build.** Mirrored where documents load it: under the asset mount, or under `frontend.asset_base_url`'s path when that is on the site's own host (e.g. `wp-content/themes/<theme>/dist/`). An asset base on another host is left alone.
 - **Storage.** The local target is built in. The S3 target needs the AWS SDK for PHP already loaded, or a client from the `wp_headless_static_s3_client` filter; the plugin holds no credentials. Any other store plugs in through `wp_headless_static_storage`.
 
 The storage layout, every setting and every hook are in [docs/HOOKS.md](docs/HOOKS.md#static-publishing).

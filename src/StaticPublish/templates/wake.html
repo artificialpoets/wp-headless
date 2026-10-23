@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Starting…</title>
+<style>
+  :root { --bg:#ffffff; --fg:#1d1d1f; --muted:#6b6b70; --accent:#2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141416; --fg:#f2f2f4; --muted:#a1a1a8; --accent:#7aa2ff; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg); }
+  body { font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; place-items: center; padding: 24px; }
+  main { max-width: 460px; text-align: center; }
+  h1 { font-size: 26px; font-weight: 600; letter-spacing: -.01em; margin-bottom: 10px; }
+  p { color: var(--muted); }
+  .dots { margin: 22px auto 0; display: flex; gap: 8px; justify-content: center; }
+  .dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); opacity: .25; animation: pulse 1.2s infinite ease-in-out; }
+  .dots span:nth-child(2) { animation-delay: .2s; } .dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes pulse { 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .dots span { animation: none; opacity: .6; } }
+  a, button { color: var(--accent); }
+  button { font: inherit; background: none; border: 0; cursor: pointer; text-decoration: underline; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main id="wake" hidden>
+  <h1>Starting the editor</h1>
+  <p>WordPress sleeps while nobody is editing. It takes about a minute to start. This page reloads when it is ready.</p>
+  <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
+  <p id="slow" hidden style="margin-top:18px">This is taking longer than usual. <button id="retry">Try again</button></p>
+</main>
+<main id="gone" hidden>
+  <h1>Page not found</h1>
+  <p>This page doesn't exist, or it isn't available right now. <a href="/">Go to the home page</a></p>
+</main>
+<script>
+(function () {
+  // Filled in by the static publisher (Publisher::wake_page_html()): the
+  // host's wake endpoint, as a JSON string. POST {host} wakes WordPress;
+  // GET ?host= answers {status: "asleep" | "starting" | "awake"}.
+  var WAKE_URL = __WAKE_URL__;
+  var path = location.pathname;
+  // An edge sends a signed-in editor to WordPress on every path, so a public
+  // page they open while it sleeps lands here too: wake it for them. Of the
+  // editor cookies, only wp-settings- is readable from script.
+  var editor = /^\/(wp-admin|wp-login\.php)/.test(path) || /[?&]wake=1/.test(location.search) || /(?:^|;\s*)wp-settings-\d+=/.test(document.cookie);
+  // Every fetch gives up after 10 s, so a hung request still shows a way out.
+  function within(ms) {
+    return typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(ms) : undefined;
+  }
+
+  if (!editor) {
+    // A visitor: show the site's own 404 page, which the publisher stores.
+    fetch('/__data/__shell/404.html', { credentials: 'omit', signal: within(10000) })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function (html) { document.open(); document.write(html); document.close(); })
+      .catch(function () { document.getElementById('gone').hidden = false; });
+    return;
+  }
+
+  document.getElementById('wake').hidden = false;
+  document.title = 'Starting the editor…';
+  var host = location.host;
+  var started = Date.now();
+
+  // Reloads this tab made in the last five minutes. If the edge still answers
+  // 503 after the endpoint says awake, stop instead of reloading every 3 s.
+  var RELOADS = 'wp-headless-wake-reloads';
+  function recentReloads() {
+    var raw;
+    try { raw = sessionStorage.getItem(RELOADS); } catch (e) { return null; }
+    try {
+      var r = JSON.parse(raw || 'null');
+      return r && Date.now() - r.at < 300000 ? Number(r.n) || 0 : 0;
+    } catch (e) { return 0; }
+  }
+  function reloadWhenAwake() {
+    var n = recentReloads();
+    // No storage means no count: let the editor reload by hand.
+    if (n === null || n >= 5) { document.getElementById('slow').hidden = false; return; }
+    try { sessionStorage.setItem(RELOADS, JSON.stringify({ n: n + 1, at: Date.now() })); } catch (e) {}
+    location.reload();
+  }
+
+  function wake() {
+    return fetch(WAKE_URL, { method: 'POST', body: JSON.stringify({ host: host }), headers: { 'content-type': 'application/json' }, signal: within(10000) }).catch(function () {});
+  }
+  function poll() {
+    fetch(WAKE_URL + '?host=' + encodeURIComponent(host), { cache: 'no-store', signal: within(10000) })
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        if (s && s.status === 'awake') { reloadWhenAwake(); return; }
+        if (s && s.status === 'asleep' && Date.now() - started > 15000) { wake(); }
+        next();
+      })
+      .catch(next);
+  }
+  function next() {
+    if (Date.now() - started > 240000) { document.getElementById('slow').hidden = false; return; }
+    setTimeout(poll, 3000);
+  }
+  document.getElementById('retry').addEventListener('click', function () {
+    try { sessionStorage.removeItem(RELOADS); } catch (e) {}
+    location.reload();
+  });
+  wake().then(function () { setTimeout(poll, 2000); });
+})();
+</script>
+</body>
+</html>

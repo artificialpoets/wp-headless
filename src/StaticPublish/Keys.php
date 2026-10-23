@@ -30,6 +30,12 @@ final class Keys {
 	/** The site's 404 page, for an edge to answer unknown paths with. */
 	public const NOT_FOUND = '__data/__shell/404.html';
 
+	/** The page an edge answers with while WordPress sleeps; it wakes it for an editor. */
+	public const WAKE = '__data/__shell/503.html';
+
+	/** When an editor was last seen: `{"lastEditor": ISO}`. Public. */
+	public const ACTIVITY = '__data/__activity.json';
+
 	/** Prefix of every key the publisher manages itself (never swept). */
 	public const RESERVED_PREFIX = '__data/__';
 

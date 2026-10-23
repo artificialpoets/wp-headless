@@ -15,6 +15,7 @@ use WPHeadless\StaticPublish\LocalStorage;
 use WPHeadless\StaticPublish\Publisher;
 use WPHeadless\StaticPublish\StaticPublish;
 use WPHeadless\Tests\Unit\StaticPublish\Fakes\MemoryStorage;
+use WPHeadless\Theme\ThemeManager;
 use WPHeadless\Tests\Unit\StaticPublish\Fakes\Options;
 
 /** The module with a settable constant and an injectable publisher. */
@@ -83,7 +84,7 @@ final class StaticPublishTest extends TestCase {
 	/**
 	 * @param array<string,mixed> $values Config values keyed by dot path.
 	 */
-	private function module( array $values = array() ): TestableStaticPublish {
+	private function module( array $values = array(), ?ThemeManager $theme_manager = null ): TestableStaticPublish {
 		$config = $this->getMockBuilder( Config::class )->disableOriginalConstructor()->getMock();
 		$config->method( 'get' )->willReturnCallback(
 			static function ( $key, $default = null ) use ( $values ) {
@@ -91,7 +92,14 @@ final class StaticPublishTest extends TestCase {
 			}
 		);
 		$config->method( 'asset_mount' )->willReturn( '_wp-headless' );
-		return new TestableStaticPublish( $config );
+		return new TestableStaticPublish( $config, $theme_manager );
+	}
+
+	/** A theme whose build lives at /themes/starter/dist. */
+	private function theme(): ThemeManager {
+		$theme = $this->createMock( ThemeManager::class );
+		$theme->method( 'resolve_dist_path' )->willReturn( '/themes/starter/dist' );
+		return $theme;
 	}
 
 	private function opt_in(): void {
@@ -355,5 +363,59 @@ final class StaticPublishTest extends TestCase {
 		$data                                 = $this->module()->static_runtime( array( 'rest' => array( 'nonce' => 'abc123' ) ) );
 
 		$this->assertSame( 'abc123', $data['rest']['nonce'] );
+	}
+
+	// --- where the theme build is mirrored ---
+
+	private function stub_home(): void {
+		Functions\when( 'home_url' )->justReturn( 'https://ex.test/' );
+		Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
+	}
+
+	public function test_the_build_is_mirrored_under_the_asset_mount_by_default(): void {
+		$this->stub_home();
+
+		$this->assertSame(
+			array(
+				'dist'   => '/themes/starter/dist',
+				'prefix' => '_wp-headless',
+			),
+			$this->module( array(), $this->theme() )->asset_target()
+		);
+	}
+
+	public function test_an_asset_base_on_the_sites_host_is_mirrored_under_its_own_path(): void {
+		$this->stub_home();
+		$module = $this->module( array( 'frontend.asset_base_url' => 'https://EX.test/wp-content/themes/starter/dist/' ), $this->theme() );
+
+		$this->assertSame(
+			array(
+				'dist'   => '/themes/starter/dist',
+				'prefix' => 'wp-content/themes/starter/dist',
+			),
+			$module->asset_target()
+		);
+	}
+
+	public function test_an_asset_base_on_another_host_is_not_mirrored(): void {
+		$this->stub_home();
+		$module = $this->module( array( 'frontend.asset_base_url' => 'https://cdn.example/starter/dist' ), $this->theme() );
+
+		$this->assertSame( '', $module->asset_target()['dist'] );
+	}
+
+	public function test_the_mirror_can_be_turned_off(): void {
+		$this->stub_home();
+		$module = $this->module( array( 'modules.static_publish.assets' => false ), $this->theme() );
+
+		$this->assertSame( '', $module->asset_target()['dist'] );
+	}
+
+	public function test_an_asset_base_at_the_site_root_is_not_mirrored(): void {
+		$this->stub_home();
+
+		$this->assertNull( StaticPublish::same_host_path( 'https://ex.test/', 'https://ex.test/' ) );
+		$this->assertNull( StaticPublish::same_host_path( 'https://ex.test/../x', 'https://ex.test/' ) );
+		$this->assertSame( 'a/b', StaticPublish::same_host_path( 'https://ex.test/a/b', 'https://ex.test/' ) );
 	}
 }

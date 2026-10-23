@@ -11,10 +11,12 @@ use WPHeadless\Runtime\AssetProxy;
 
 /**
  * Documents load the theme's built JS and CSS from the asset mount
- * (`/_wp-headless/...`), which the AssetProxy answers from PHP. While
- * WordPress sleeps that route is gone too, so the publisher copies the
- * active build (`{theme}/dist/`) to `<mount>/<path>` in storage, with the
- * proxy's own content types and cache policy.
+ * (`/_wp-headless/...`, answered by the AssetProxy in PHP) or from
+ * `frontend.asset_base_url`. While WordPress sleeps neither may answer, so
+ * the publisher copies the active build (`{theme}/dist/`) to
+ * `<prefix>/<path>` in storage, where `<prefix>` is the path documents load
+ * it from (StaticPublish::asset_target()), with the proxy's own content
+ * types and cache policy.
  *
  * Mirrored files are never swept: HTML still cached at an edge may
  * reference an earlier build's hashed chunks.
@@ -40,7 +42,7 @@ class AssetMirror {
 	 * and any extension without a known web content type.
 	 *
 	 * @param string $dist  Absolute build directory.
-	 * @param string $mount Asset mount, e.g. `_wp-headless`.
+	 * @param string $mount Key prefix, e.g. `_wp-headless` or `wp-content/themes/<theme>/dist`.
 	 * @return array<int, array{key:string, file:string, type:string, cache:string}>
 	 */
 	public function files( string $dist, string $mount ): array {

@@ -233,7 +233,8 @@ Config, under `modules.static_publish`:
 | `timeout` | `30` | Seconds per read before it counts as failed. |
 | `delay` | `60` | Seconds between a change and its cron publish; later changes join it. |
 | `document_cache` | `public, max-age=60, s-maxage=300, stale-while-revalidate=3600` | Cache-Control for a stored copy whose origin answer was not public. |
-| `assets` | `true` | Mirror the theme build to the asset mount. Skipped when `frontend.asset_base_url` is set. |
+| `assets` | `true` | Mirror the theme build where documents load it: under the asset mount, or under `frontend.asset_base_url`'s path when that URL is on the site's own host. Skipped when the asset base is on another host or is the site root. |
+| `wake_url` | `''` | The host's wake endpoint. When it is an http(s) URL, each run stores the wake page `__data/__shell/503.html` with it filled in; when it is removed, the next run deletes the page. The endpoint answers `POST {"host": …}` by waking WordPress and `GET ?host=…` with `{"status": "asleep" \| "starting" \| "awake"}`. |
 
 Storage layout (keys are relative to the target):
 
@@ -241,10 +242,12 @@ Storage layout (keys are relative to the target):
 |-----|---------|
 | `index.html`, `<path>/index.html` | Every `publish` singular without a password, and the archives with their pagination. A path with a file extension is its own key (`robots.txt`). |
 | `__data/routes/<path>/index.json` | The route's data-export envelope (`/` → `__data/routes/index.json`). |
-| `<asset mount>/...` | The theme build (`{theme}/dist/`), proxy content types and cache policy. Never swept. |
-| `__data/__status.json` | `{v, running, started, published, nextScheduled}`; after a failure `failedAt` and `error` (the exception's short class name). Public: never messages, paths or counts. `nextScheduled` is when WordPress must be awake to publish a scheduled post. |
+| `<asset mount>/...` or `<asset base path>/...` | The theme build (`{theme}/dist/`), proxy content types and cache policy, under the path documents load it from (see `assets`). Never swept. |
+| `__data/__status.json` | `{v, running, started, published, nextWake}`; after a failure `failedAt` and `error` (the exception's short class name). Public: never messages, paths or counts. `nextWake` is when WordPress must be awake to publish a scheduled post. |
 | `__data/__redirects.json` | The redirect map. |
 | `__data/__shell/404.html` | The site's 404 page. |
+| `__data/__shell/503.html` | Only with `wake_url`: the page an edge answers with while WordPress sleeps. For an editor (a `/wp-admin` or `/wp-login.php` path, `?wake=1`, or a `wp-settings-` cookie) it calls the wake endpoint, polls it and reloads once WordPress is up. For anyone else it shows the 404 page. |
+| `__data/__activity.json` | `{"lastEditor": ISO}`: when a signed-in user who can edit posts was last seen. Written at most once a minute, after the response has gone out; a failed write is retried on the next editor request. A host sleeps WordPress once it is older than its idle window. |
 
 A stored copy follows these rules:
 
@@ -266,7 +269,9 @@ A stored copy follows these rules:
 An edge in front of the storage answers a request by trying the document
 key for its path. On a miss it forwards to WordPress while WordPress is
 awake. While it sleeps, it answers a path in `__data/__redirects.json` with a
-301 and anything else with `__data/__shell/404.html` and a 404 status.
+301 and anything else with `__data/__shell/404.html` and a 404 status. A
+request it must send to WordPress (an editor's) gets `__data/__shell/503.html`,
+which wakes it.
 
 CLI: `wp headless static publish [--force]` and `wp headless static status`.
 

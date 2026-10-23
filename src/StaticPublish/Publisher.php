@@ -12,9 +12,10 @@ use WPHeadless\Export\DataExport;
 /**
  * One publish writes, in order: the theme build (so no document ever points
  * at a chunk storage lacks), every published singular and its data
- * artifact, the archives and crawler files, the 404 shell and the redirect
- * map. It then sweeps the copies this run did not see and records the run
- * in the public `__data/__status.json`.
+ * artifact, the archives and crawler files, the 404 shell, the wake page
+ * (when a wake URL is configured) and the redirect map. It then sweeps the
+ * copies this run did not see and records the run in the public
+ * `__data/__status.json`.
  *
  * Rules a stored copy follows:
  *
@@ -68,7 +69,7 @@ class Publisher {
 
 	private ?AssetMirror $assets;
 
-	/** @var array{document_cache:string, dist:string, mount:string} */
+	/** @var array{document_cache:string, dist:string, mount:string, wake_url:string} */
 	private array $settings;
 
 	/** @var array<string,string> Key → content hash. */
@@ -93,7 +94,9 @@ class Publisher {
 	/**
 	 * @param Storage               $storage   Target.
 	 * @param Fetcher               $fetcher   Origin reader.
-	 * @param array<string,string>  $settings  { document_cache, dist, mount }; empty dist skips the asset mirror.
+	 * @param array<string,string>  $settings  { document_cache, dist, mount, wake_url }. Empty dist skips the
+	 *                                         asset mirror; `mount` is the key prefix the build is mirrored
+	 *                                         under; empty wake_url skips the wake page.
 	 * @param Routes|null           $routes    Route collector.
 	 * @param RedirectMap|null      $redirects Redirect map builder.
 	 * @param DataExport|null       $data      Data-artifact builder; null skips artifacts.
@@ -110,6 +113,7 @@ class Publisher {
 			'document_cache' => '' !== (string) ( $settings['document_cache'] ?? '' ) ? (string) $settings['document_cache'] : self::DEFAULT_CACHE,
 			'dist'           => (string) ( $settings['dist'] ?? '' ),
 			'mount'          => trim( (string) ( $settings['mount'] ?? '_wp-headless' ), '/' ),
+			'wake_url'       => (string) ( $settings['wake_url'] ?? '' ),
 		);
 	}
 
@@ -151,9 +155,9 @@ class Publisher {
 				update_option( self::LAST, $published, false );
 				$this->write_status(
 					array(
-						'started'       => gmdate( 'c', $started ),
-						'published'     => $published,
-						'nextScheduled' => $this->next_scheduled(),
+						'started'   => gmdate( 'c', $started ),
+						'published' => $published,
+						'nextWake'  => $this->next_scheduled(),
 					)
 				);
 				$rounds++;
@@ -235,6 +239,7 @@ class Publisher {
 		}
 
 		$this->note( $stats['site'], $this->publish_document( self::NOT_FOUND_PROBE, Keys::NOT_FOUND, array( 404 ) ), 'the 404 page' );
+		$this->note( $stats['site'], $this->publish_wake_page(), 'the wake page' );
 		$this->note(
 			$stats['site'],
 			$this->put_if_changed( Keys::REDIRECTS, (string) wp_json_encode( (object) $this->redirects->build(), JSON_UNESCAPED_SLASHES ), 'application/json; charset=utf-8', $this->settings['document_cache'] ),
@@ -284,6 +289,54 @@ class Publisher {
 			$cache = $this->settings['document_cache'];
 		}
 		return $this->put_if_changed( $key, $res['body'], $type, $cache );
+	}
+
+	/**
+	 * Store the wake page, or retract one an earlier run stored once the wake
+	 * URL is gone. Reserved keys are never swept, so the retraction is here.
+	 *
+	 * @return string stored | unchanged | failed | skipped | removed
+	 */
+	private function publish_wake_page(): string {
+		$html = self::wake_page_html( (string) file_get_contents( __DIR__ . '/templates/wake.html' ), $this->settings['wake_url'] ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		if ( null !== $html ) {
+			return $this->put_if_changed( Keys::WAKE, $html, 'text/html; charset=utf-8', 'no-cache, max-age=0' );
+		}
+		if ( '' !== $this->settings['wake_url'] ) {
+			error_log( '[wp-headless] static wake page skipped: the wake URL is not an http(s) URL' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions
+		}
+		if ( ! isset( $this->hashes[ Keys::WAKE ] ) ) {
+			return 'skipped';
+		}
+		try {
+			$this->storage->delete( Keys::WAKE );
+		} catch ( StorageError $e ) {
+			error_log( '[wp-headless] static delete failed: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions
+			return 'failed';
+		}
+		unset( $this->hashes[ Keys::WAKE ] );
+		return 'removed';
+	}
+
+	/**
+	 * The wake page with its wake URL filled in, or null when the URL is not
+	 * an http(s) URL or the template lacks the placeholder. The URL becomes a
+	 * JSON string literal with `<`, `>`, `&` and quotes escaped, so nothing in
+	 * it can end the script element or the string.
+	 *
+	 * @param string $template Template with the `__WAKE_URL__` placeholder.
+	 * @param string $wake_url The host's wake endpoint.
+	 */
+	public static function wake_page_html( string $template, string $wake_url ): ?string {
+		$parts = wp_parse_url( $wake_url );
+		if ( ! is_array( $parts ) || ! in_array( strtolower( (string) ( $parts['scheme'] ?? '' ) ), array( 'http', 'https' ), true ) || empty( $parts['host'] ) ) {
+			return null;
+		}
+		if ( false === strpos( $template, '__WAKE_URL__' ) ) {
+			return null;
+		}
+		$literal = (string) json_encode( $wake_url, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
+		return str_replace( '__WAKE_URL__', $literal, $template );
 	}
 
 	/**
@@ -492,9 +545,10 @@ class Publisher {
 	}
 
 	/**
-	 * When the next scheduled post goes live (ISO, UTC), or null. A host
-	 * that puts WordPress to sleep must wake it then: core publishes
-	 * scheduled posts from cron, which only runs while WordPress is up.
+	 * When the next scheduled post goes live (ISO, UTC), or null: the status
+	 * file's `nextWake`. A host that puts WordPress to sleep must wake it
+	 * then: core publishes scheduled posts from cron, which only runs while
+	 * WordPress is up.
 	 */
 	private function next_scheduled(): ?string {
 		$next = get_posts(

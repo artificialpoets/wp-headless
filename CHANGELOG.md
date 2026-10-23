@@ -19,10 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps the last good copy; a 404, 410 or redirect removes it, as does a post
   made private, drafted, trashed or password-protected. Unchanged objects are
   never rewritten (content-hash manifest per target). Each run writes a public
-  `__data/__status.json` (running, started, published, error class only), a
-  redirect map (`__data/__redirects.json`) and the 404 page
-  (`__data/__shell/404.html`) so an edge can answer like WordPress while it
-  sleeps. A run lock keeps one publish at a time; a run that throws records
+  `__data/__status.json` (running, started, published, `nextWake` for the next
+  scheduled post, error class only), a redirect map (`__data/__redirects.json`)
+  and the 404 page (`__data/__shell/404.html`) so an edge can answer like
+  WordPress while it sleeps, plus a wake page (`__data/__shell/503.html`) that
+  wakes WordPress for an editor when `modules.static_publish.wake_url` names
+  the host's wake endpoint. A signed-in editor stamps `__data/__activity.json`
+  (`{"lastEditor": ISO}`) at most once a minute, after the response, so a host
+  knows when to sleep WordPress. The theme build is mirrored where documents
+  load it: the asset mount, or `frontend.asset_base_url`'s path when that is on
+  the site's own host. A run lock keeps one publish at a time; a run that throws records
   its error class and keeps the site dirty. Changes only mark the site dirty
   and schedule one cron event — the publish runs from cron or
   `wp headless static publish|status`, never in the request that saved.

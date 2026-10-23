@@ -94,7 +94,7 @@ final class PublisherTest extends TestCase {
 		parent::tearDown();
 	}
 
-	private function publisher( ?DataExport $data = null, string $dist = '' ): Publisher {
+	private function publisher( ?DataExport $data = null, string $dist = '', string $wake_url = '' ): Publisher {
 		$redirects = $this->createMock( RedirectMap::class );
 		$redirects->method( 'build' )->willReturnCallback(
 			function () {
@@ -105,8 +105,9 @@ final class PublisherTest extends TestCase {
 			$this->storage,
 			$this->fetcher,
 			array(
-				'dist'  => $dist,
-				'mount' => '_wp-headless',
+				'dist'     => $dist,
+				'mount'    => '_wp-headless',
+				'wake_url' => $wake_url,
 			),
 			$this->routes,
 			$redirects,
@@ -322,7 +323,62 @@ final class PublisherTest extends TestCase {
 		$last = $this->storage->status();
 		$this->assertFalse( $last['running'] );
 		$this->assertNotNull( $last['published'] );
-		$this->assertSame( array( 'v', 'running', 'started', 'published', 'nextScheduled' ), array_keys( $last ) );
+		$this->assertSame( array( 'v', 'running', 'started', 'published', 'nextWake' ), array_keys( $last ) );
+	}
+
+	public function test_next_wake_is_when_the_next_scheduled_post_goes_live(): void {
+		Functions\when( 'get_posts' )->justReturn( array( 7 ) );
+		Functions\when( 'get_post_field' )->justReturn( '2026-11-01 09:30:00' );
+		$this->publisher()->run();
+
+		$this->assertSame( '2026-11-01T09:30:00+00:00', $this->storage->status()['nextWake'] );
+	}
+
+	// --- wake page ---
+
+	public function test_the_wake_page_is_stored_with_the_wake_url_as_a_safe_json_string(): void {
+		$this->publisher( null, '', 'https://wake.example/fn?x=1&y=</script>"' )->run();
+
+		$page = $this->storage->objects[ Keys::WAKE ];
+		// JSON escapes of & < > " (built with chr(92) for the backslash).
+		$u = chr( 92 ) . 'u00';
+		$this->assertStringContainsString( 'var WAKE_URL = "https://wake.example/fn?x=1' . $u . '26y=' . $u . '3C/script' . $u . '3E' . $u . '22";', $page['body'] );
+		$this->assertStringNotContainsString( '__WAKE_URL__', $page['body'] );
+		$this->assertStringNotContainsString( '</script>"', $page['body'] );
+		$this->assertSame( 'text/html; charset=utf-8', $page['type'] );
+		$this->assertSame( 'no-cache, max-age=0', $page['cache'] );
+	}
+
+	public function test_no_wake_page_without_a_wake_url(): void {
+		$stats = $this->publisher()->run();
+
+		$this->assertArrayNotHasKey( Keys::WAKE, $this->storage->objects );
+		$this->assertSame( 1, $stats['site']['skipped'] );
+	}
+
+	public function test_a_wake_url_that_is_not_http_is_refused(): void {
+		$this->assertNull( Publisher::wake_page_html( 'var WAKE_URL = __WAKE_URL__;', 'javascript:alert(1)' ) );
+		$this->assertNull( Publisher::wake_page_html( 'var WAKE_URL = __WAKE_URL__;', '/relative/path' ) );
+		$this->publisher( null, '', 'javascript:alert(1)' )->run();
+
+		$this->assertArrayNotHasKey( Keys::WAKE, $this->storage->objects );
+	}
+
+	public function test_the_wake_page_is_retracted_once_the_wake_url_is_gone(): void {
+		$this->publisher( null, '', 'https://wake.example/fn' )->run();
+		$this->assertArrayHasKey( Keys::WAKE, $this->storage->objects );
+
+		$stats = $this->publisher()->run();
+
+		$this->assertArrayNotHasKey( Keys::WAKE, $this->storage->objects );
+		$this->assertSame( 1, $stats['site']['removed'] );
+	}
+
+	public function test_an_unchanged_wake_page_is_not_rewritten(): void {
+		$this->publisher( null, '', 'https://wake.example/fn' )->run();
+		$this->publisher( null, '', 'https://wake.example/fn' )->run();
+
+		$this->assertSame( 1, $this->count_puts( Keys::WAKE ) );
 	}
 
 	public function test_a_failed_run_records_the_error_class_only_and_stays_dirty(): void {
