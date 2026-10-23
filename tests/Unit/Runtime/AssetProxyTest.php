@@ -311,4 +311,19 @@ class AssetProxyTest extends TestCase {
         $b = $proxy->exposeAssetEtag( 'app.renderer.js', 1000, 200 );
         $this->assertNotSame( $a, $b );
     }
+
+    // --- Static helpers shared with the static publisher's asset mirror ---
+
+    public function test_static_cache_rule_matches_the_served_header(): void {
+        $proxy = $this->makeProxy();
+        foreach ( array( 'index-C19sr62o.js', 'app-a1b2c3d4.css', 'app.renderer.js', 'logo.svg' ) as $name ) {
+            $this->assertSame( $proxy->exposeCacheControlHeader( $name ), AssetProxy::cache_control_for( $name ), $name );
+        }
+    }
+
+    public function test_mime_map_covers_the_built_asset_types(): void {
+        $this->assertSame( 'application/javascript', AssetProxy::MIME_TYPES['js'] );
+        $this->assertSame( 'text/css', AssetProxy::MIME_TYPES['css'] );
+        $this->assertSame( 'font/woff2', AssetProxy::MIME_TYPES['woff2'] );
+    }
 }

@@ -104,29 +104,12 @@ class DataExport implements Module {
 	 * @param object $post WP_Post-shaped object.
 	 */
 	public function export_post( $post ): void {
-		if ( ! $this->exportable_type( (string) $post->post_type ) ) {
+		$artifact = $this->build( $post );
+		if ( null === $artifact ) {
 			return;
 		}
-		$permalink = get_permalink( $post->ID );
-		if ( ! is_string( $permalink ) || '' === $permalink ) {
-			return;
-		}
-		if ( $this->is_front_page( $post ) ) {
-			$permalink = home_url( '/' );
-		}
-		$path = $this->export_path_for( $permalink );
-		if ( null === $path ) {
-			return;
-		}
-		$content = $this->rest_content( (string) $post->post_type, (string) $post->post_name );
-		if ( null === $content ) {
-			return; // REST refused (type not exposed, filtered out) — no artifact.
-		}
-		$envelope = $this->envelope( $path, $permalink, $content );
-		$json     = wp_json_encode( $envelope, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-		if ( ! is_string( $json ) ) {
-			return;
-		}
+		$path = $artifact['path'];
+		$json = $artifact['json'];
 
 		/**
 		 * Fires when a route's data artifact has been built.
@@ -147,6 +130,43 @@ class DataExport implements Module {
 				'post_id'   => (int) $post->ID,
 				'post_type' => (string) $post->post_type,
 			)
+		);
+	}
+
+	/**
+	 * Build a post's artifact without announcing it — the static publisher
+	 * stores it directly.
+	 *
+	 * @param object $post WP_Post-shaped object.
+	 * @return array{path: string, json: string}|null Null when the post has
+	 *         no artifact (type not exported, no usable permalink, REST refused).
+	 */
+	public function build( $post ): ?array {
+		if ( ! $this->exportable_type( (string) $post->post_type ) ) {
+			return null;
+		}
+		$permalink = get_permalink( $post->ID );
+		if ( ! is_string( $permalink ) || '' === $permalink ) {
+			return null;
+		}
+		if ( $this->is_front_page( $post ) ) {
+			$permalink = home_url( '/' );
+		}
+		$path = $this->export_path_for( $permalink );
+		if ( null === $path ) {
+			return null;
+		}
+		$content = $this->rest_content( (string) $post->post_type, (string) $post->post_name );
+		if ( null === $content ) {
+			return null; // REST refused (type not exposed, filtered out) — no artifact.
+		}
+		$json = wp_json_encode( $this->envelope( $path, $permalink, $content ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		if ( ! is_string( $json ) ) {
+			return null;
+		}
+		return array(
+			'path' => $path,
+			'json' => $json,
 		);
 	}
 
