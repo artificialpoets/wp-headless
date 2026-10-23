@@ -35,6 +35,7 @@ class ComposerStaticInitb4a813d0c862536771e7013f53975eba
         'WPHeadless\\Config\\Config' => __DIR__ . '/../..' . '/src/Config/Config.php',
         'WPHeadless\\Contracts\\Module' => __DIR__ . '/../..' . '/src/Contracts/Module.php',
         'WPHeadless\\Export\\DataExport' => __DIR__ . '/../..' . '/src/Export/DataExport.php',
+        'WPHeadless\\Http\\AcceptNegotiation' => __DIR__ . '/../..' . '/src/Http/AcceptNegotiation.php',
         'WPHeadless\\Http\\CachePolicy' => __DIR__ . '/../..' . '/src/Http/CachePolicy.php',
         'WPHeadless\\Http\\ConditionalRequest' => __DIR__ . '/../..' . '/src/Http/ConditionalRequest.php',
         'WPHeadless\\Http\\Cors' => __DIR__ . '/../..' . '/src/Http/Cors.php',

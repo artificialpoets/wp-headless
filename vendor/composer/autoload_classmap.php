@@ -16,6 +16,7 @@ return array(
     'WPHeadless\\Config\\Config' => $baseDir . '/src/Config/Config.php',
     'WPHeadless\\Contracts\\Module' => $baseDir . '/src/Contracts/Module.php',
     'WPHeadless\\Export\\DataExport' => $baseDir . '/src/Export/DataExport.php',
+    'WPHeadless\\Http\\AcceptNegotiation' => $baseDir . '/src/Http/AcceptNegotiation.php',
     'WPHeadless\\Http\\CachePolicy' => $baseDir . '/src/Http/CachePolicy.php',
     'WPHeadless\\Http\\ConditionalRequest' => $baseDir . '/src/Http/ConditionalRequest.php',
     'WPHeadless\\Http\\Cors' => $baseDir . '/src/Http/Cors.php',
