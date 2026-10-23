@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AssetProxy::MIME_TYPES` expose the proxy's asset rules. Behavior of both
   modules is unchanged.
 
+### Fixed
+- The static publisher's S3 target accepts the AWS SDK's `S3Client`. 0.5.0
+  refused it with "The S3 target needs a client with putObject() and
+  deleteObject()", because the SDK answers those methods through `__call()`.
+
 ## [0.4.2] — 2026-08-29
 
 ### Fixed
