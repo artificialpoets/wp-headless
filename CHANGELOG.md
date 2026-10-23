@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **One request could replace a page in a CDN cache.** The frontend gate stood
+  down for any request whose Accept header listed JSON (core's
+  `wp_is_json_request()`), so `Accept: application/json, text/html` got
+  WordPress's native render of a page URL. CDNs whose cache key leaves Accept
+  out (CloudFront's defaults among them) then served that render to every
+  visitor of the URL. Reproduced on a production site: one `curl` with that
+  header, and the next browser request was a cache HIT on the classic render.
+  The gate now negotiates (`AcceptNegotiation`): a request is a JSON client
+  only when it ranks JSON above HTML, or sends a JSON body. A tie, `*/*` and
+  no header all get the frontend. A JSON client's native response now carries
+  `Vary: Accept` and `nocache_headers()`, so no shared cache keeps it.
 ### Added
 - **Static publisher** (`StaticPublish\StaticPublish`, key `static_publish`):
   writes a site's public pages, each route's data-export artifact and the
